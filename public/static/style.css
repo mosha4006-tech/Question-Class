@@ -1,1 +1,123 @@
-h1 { font-family: Arial, Helvetica, sans-serif; }
+/* 깊이있는 질문 교실 - Custom Styles */
+
+/* 노션 스타일 스크롤바 */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f0ec;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cec8bc;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #b8afa0;
+}
+
+/* 애니메이션 효과 */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.slide-in {
+  animation: slideIn 0.3s ease-out;
+}
+
+/* 질문 카드 호버 효과 */
+.question-card {
+  transition: all 0.2s ease;
+}
+
+.question-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* 좋아요 버튼 애니메이션 */
+.like-button {
+  transition: all 0.2s ease;
+}
+
+.like-button:hover {
+  transform: scale(1.1);
+}
+
+.like-button.liked {
+  color: #ef4444;
+  transform: scale(1.1);
+}
+
+/* 로딩 스피너 */
+.spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* 토스트 알림 애니메이션 */
+.toast-enter {
+  animation: toastEnter 0.3s ease-out;
+}
+
+.toast-exit {
+  animation: toastExit 0.3s ease-in;
+}
+
+@keyframes toastEnter {
+  from { 
+    opacity: 0; 
+    transform: translateX(100%);
+  }
+  to { 
+    opacity: 1; 
+    transform: translateX(0);
+  }
+}
+
+@keyframes toastExit {
+  from { 
+    opacity: 1; 
+    transform: translateX(0);
+  }
+  to { 
+    opacity: 0; 
+    transform: translateX(100%);
+  }
+}
+
+/* AI 메시지 타이핑 효과 */
+.typing-indicator {
+  animation: typing 1.5s ease-in-out infinite;
+}
+
+@keyframes typing {
+  0%, 60%, 100% { opacity: 0.3; }
+  30% { opacity: 1; }
+}
+
+/* 반응형 최적화 */
+@media (max-width: 768px) {
+  .question-card {
+    margin: 0 -1rem;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+  }
+}
