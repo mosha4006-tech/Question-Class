@@ -324,6 +324,146 @@ app.post('/api/auth/forgot-password', async (c) => {
   }
 })
 
+// 교사 아이디 찾기 API (이름 + 이메일)
+app.post('/api/auth/find-username', async (c) => {
+  try {
+    const { full_name, email } = await c.req.json()
+    
+    if (!full_name || !email) {
+      return c.json({ error: '이름과 이메일을 모두 입력해주세요.' }, 400)
+    }
+
+    // 교사 계정만 검색 (보안상 이유)
+    const user = await c.env.DB.prepare(
+      'SELECT username FROM users WHERE full_name = ? AND email = ? AND user_type = "teacher"'
+    ).bind(full_name, email).first()
+
+    if (!user) {
+      return c.json({ error: '입력하신 정보와 일치하는 교사 계정을 찾을 수 없습니다.' }, 404)
+    }
+
+    return c.json({ 
+      success: true, 
+      username: user.username,
+      message: '아이디를 찾았습니다.'
+    })
+  } catch (error) {
+    return c.json({ error: '아이디 찾기 처리 중 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// 교사 비밀번호 재설정 API (아이디 + 이메일)
+app.post('/api/auth/reset-password', async (c) => {
+  try {
+    const { username, email, new_password } = await c.req.json()
+    
+    if (!username || !email || !new_password) {
+      return c.json({ error: '아이디, 이메일, 새 비밀번호를 모두 입력해주세요.' }, 400)
+    }
+
+    if (new_password.length < 4) {
+      return c.json({ error: '비밀번호는 최소 4자 이상이어야 합니다.' }, 400)
+    }
+
+    // 교사 계정 확인
+    const user = await c.env.DB.prepare(
+      'SELECT id FROM users WHERE username = ? AND email = ? AND user_type = "teacher"'
+    ).bind(username, email).first()
+
+    if (!user) {
+      return c.json({ error: '입력하신 정보와 일치하는 교사 계정을 찾을 수 없습니다.' }, 404)
+    }
+
+    // 비밀번호 업데이트
+    await c.env.DB.prepare(
+      'UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+    ).bind(new_password, user.id).run()
+
+    return c.json({ 
+      success: true, 
+      message: '비밀번호가 성공적으로 변경되었습니다.'
+    })
+  } catch (error) {
+    return c.json({ error: '비밀번호 재설정 처리 중 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// 교사 개인정보 수정 API
+app.post('/api/teacher/update-profile', async (c) => {
+  try {
+    const { user_id, current_password, new_email, new_password } = await c.req.json()
+    
+    if (!user_id || !current_password) {
+      return c.json({ error: '사용자 ID와 현재 비밀번호는 필수입니다.' }, 400)
+    }
+
+    // 현재 비밀번호 확인
+    const user = await c.env.DB.prepare(
+      'SELECT id, email FROM users WHERE id = ? AND password_hash = ? AND user_type = "teacher"'
+    ).bind(user_id, current_password).first()
+
+    if (!user) {
+      return c.json({ error: '현재 비밀번호가 올바르지 않습니다.' }, 401)
+    }
+
+    let updateQuery = 'UPDATE users SET updated_at = CURRENT_TIMESTAMP'
+    let bindValues = []
+    let updateFields = []
+
+    // 이메일 변경 요청 시
+    if (new_email && new_email !== user.email) {
+      // 이메일 형식 검증
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+      if (!emailRegex.test(new_email)) {
+        return c.json({ error: '올바른 이메일 형식이 아닙니다.' }, 400)
+      }
+
+      // 이메일 중복 확인
+      const existingEmail = await c.env.DB.prepare(
+        'SELECT id FROM users WHERE email = ? AND id != ?'
+      ).bind(new_email, user_id).first()
+
+      if (existingEmail) {
+        return c.json({ error: '이미 사용 중인 이메일입니다.' }, 409)
+      }
+
+      updateQuery += ', email = ?'
+      bindValues.push(new_email)
+      updateFields.push('이메일')
+    }
+
+    // 비밀번호 변경 요청 시
+    if (new_password && new_password !== current_password) {
+      if (new_password.length < 4) {
+        return c.json({ error: '새 비밀번호는 최소 4자 이상이어야 합니다.' }, 400)
+      }
+
+      updateQuery += ', password_hash = ?'
+      bindValues.push(new_password)
+      updateFields.push('비밀번호')
+    }
+
+    // 변경할 내용이 없는 경우
+    if (bindValues.length === 0) {
+      return c.json({ error: '변경할 정보를 입력해주세요.' }, 400)
+    }
+
+    updateQuery += ' WHERE id = ?'
+    bindValues.push(user_id)
+
+    // 정보 업데이트 실행
+    await c.env.DB.prepare(updateQuery).bind(...bindValues).run()
+
+    return c.json({ 
+      success: true, 
+      message: `${updateFields.join(', ')}이(가) 성공적으로 변경되었습니다.`,
+      updated_fields: updateFields
+    })
+  } catch (error) {
+    return c.json({ error: '개인정보 수정 처리 중 오류가 발생했습니다.' }, 500)
+  }
+})
+
 // =================
 // 질문 관련 API
 // =================
@@ -1041,13 +1181,24 @@ app.get('/', (c) => {
                   로그인
                 </button>
               </div>
+              
+              {/* 아이디/비밀번호 찾기 링크 */}
+              <div class="flex justify-center space-x-4 mt-4 pt-4 border-t border-gray-200">
+                <button type="button" id="find-username-btn" class="text-sm text-blue-600 hover:text-blue-800 transition-colors">
+                  아이디 찾기
+                </button>
+                <span class="text-gray-300">|</span>
+                <button type="button" id="reset-password-btn" class="text-sm text-blue-600 hover:text-blue-800 transition-colors">
+                  비밀번호 재설정
+                </button>
+              </div>
             </form>
           </div>
         </div>
       </div>
 
-      {/* Forgot Password Modal */}
-      <div id="forgot-password-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50">
+      {/* 비밀번호 재설정 Modal */}
+      <div id="reset-password-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50">
         <div class="flex items-center justify-center min-h-screen p-4">
           <div class="bg-white rounded-2xl p-8 w-full max-w-md">
             <div class="text-center mb-6">
@@ -1058,12 +1209,33 @@ app.get('/', (c) => {
               <p class="text-gray-600 mt-2">등록된 이메일로 임시 비밀번호를 발송해드립니다</p>
             </div>
             
-            <form id="forgot-password-form" class="space-y-4">
+            <form id="reset-password-form" class="space-y-4">
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">이메일 주소</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">아이디</label>
+                <input type="text" name="username" required 
+                       class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500" 
+                       placeholder="아이디를 입력하세요" />
+              </div>
+              
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">이메일</label>
                 <input type="email" name="email" required 
                        class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500" 
-                       placeholder="등록된 이메일을 입력하세요" />
+                       placeholder="등록하신 이메일을 입력하세요" />
+              </div>
+              
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">새 비밀번호</label>
+                <input type="password" name="new_password" required 
+                       class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500" 
+                       placeholder="새로운 비밀번호를 입력하세요" />
+              </div>
+              
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">비밀번호 확인</label>
+                <input type="password" name="confirm_password" required 
+                       class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500" 
+                       placeholder="비밀번호를 다시 입력하세요" />
               </div>
               
               <div class="flex space-x-3 pt-4">
@@ -1071,7 +1243,7 @@ app.get('/', (c) => {
                   취소
                 </button>
                 <button type="submit" class="flex-1 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-xl transition-colors">
-                  임시 비밀번호 발송
+                  비밀번호 재설정
                 </button>
               </div>
             </form>
@@ -1459,6 +1631,9 @@ app.get('/teacher', (c) => {
             </div>
             <div class="flex items-center space-x-4">
               <span id="teacher-name" class="text-blue-700 font-medium"></span>
+              <button id="update-profile-btn" class="px-4 py-2 text-sm bg-green-100 hover:bg-green-200 text-green-700 rounded-lg transition-colors">
+                <i class="fas fa-user-edit mr-1"></i>개인정보 수정
+              </button>
               <button id="teacher-logout" class="px-4 py-2 text-sm bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg transition-colors">
                 로그아웃
               </button>
@@ -1594,8 +1769,259 @@ app.get('/teacher', (c) => {
           </div>
         </div>
       </main>
+      
+      {/* 개인정보 수정 Modal */}
+      <div id="update-profile-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50">
+        <div class="flex items-center justify-center min-h-screen p-4">
+          <div class="bg-white rounded-2xl p-8 w-full max-w-md">
+            <div class="text-center mb-6">
+              <div class="w-16 h-16 bg-green-100 rounded-2xl mx-auto mb-4 flex items-center justify-center">
+                <i class="fas fa-user-edit text-2xl text-green-600"></i>
+              </div>
+              <h2 class="text-2xl font-bold text-gray-800">개인정보 수정</h2>
+              <p class="text-gray-600 mt-2">이메일과 비밀번호를 변경할 수 있습니다</p>
+            </div>
+            
+            <form id="update-profile-form" class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">현재 비밀번호 *</label>
+                <input type="password" name="current_password" required 
+                       class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500" 
+                       placeholder="현재 비밀번호를 입력하세요" />
+                <p class="text-xs text-gray-500 mt-1">본인 확인을 위해 현재 비밀번호는 필수입니다</p>
+              </div>
+              
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">새 이메일</label>
+                <input type="email" name="new_email" 
+                       class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500" 
+                       placeholder="새로운 이메일 (선택사항)" />
+              </div>
+              
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">새 비밀번호</label>
+                <input type="password" name="new_password" 
+                       class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500" 
+                       placeholder="새로운 비밀번호 (선택사항)" />
+              </div>
+              
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">비밀번호 확인</label>
+                <input type="password" name="confirm_password" 
+                       class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500" 
+                       placeholder="비밀번호 확인 (비밀번호 변경 시만)" />
+              </div>
+              
+              <div class="bg-blue-50 rounded-xl p-3 mt-4">
+                <p class="text-xs text-blue-700">
+                  <i class="fas fa-info-circle mr-1"></i>
+                  이메일이나 비밀번호 중 변경하고 싶은 항목만 입력하세요. 두 항목 모두 비워두면 변경사항이 없다는 오류가 나타납니다.
+                </p>
+              </div>
+              
+              <div class="flex space-x-3 pt-4">
+                <button type="button" class="flex-1 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors modal-close">
+                  취소
+                </button>
+                <button type="submit" class="flex-1 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl transition-colors">
+                  <i class="fas fa-save mr-1"></i>수정 완료
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
     </div>
   )
+})
+
+// 임시 로그인용 API (디버깅 용도)
+app.get('/api/test-login/:userId', (c) => {
+  const userId = c.req.param('userId');
+  
+  // 쿠키 설정
+  setCookie(c, 'user_id', userId, { httpOnly: false, maxAge: 3600 });
+  setCookie(c, 'username', `student${userId}`, { httpOnly: false, maxAge: 3600 });
+  setCookie(c, 'full_name', '테스트 사용자', { httpOnly: false, maxAge: 3600 });
+  setCookie(c, 'user_type', 'student', { httpOnly: false, maxAge: 3600 });
+  
+  return c.json({ success: true, message: `사용자 ID ${userId}로 로그인됨` });
+});
+
+// 테스트용 레벨 시스템 페이지
+app.get('/test-level', (c) => {
+  return c.html(`
+    <!DOCTYPE html>
+      <html lang="ko">
+      <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>레벨 시스템 테스트</title>
+          <script src="https://cdn.tailwindcss.com"></script>
+          <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
+          <link href="/static/style.css" rel="stylesheet">
+      </head>
+      <body class="bg-gray-100 p-8">
+          <div class="max-w-md mx-auto bg-white rounded-2xl p-6 shadow-lg">
+              <h1 class="text-2xl font-bold mb-6 text-center">레벨 시스템 테스트</h1>
+              
+              <!-- 레벨 표시 영역 -->
+              <div id="student-level-display" class="text-center mb-6">
+                  <div id="level-icon" class="w-20 h-20 mx-auto mb-3 rounded-2xl flex items-center justify-center bg-gray-200">
+                      <i class="fas fa-seed text-2xl"></i>
+                  </div>
+                  <div id="level-name" class="font-bold text-lg text-green-800 mb-2">호기심 씨앗</div>
+                  <div id="level-progress" class="text-sm text-green-600 mb-3">총 하트: 0개</div>
+                  <div class="bg-green-100 rounded-full h-2 overflow-hidden">
+                      <div id="progress-bar" class="bg-green-500 h-full transition-all duration-500" style="width: 0%"></div>
+                  </div>
+                  <div id="next-level" class="text-xs text-gray-500 mt-2">다음 단계: 호기심 새싹 (21개)</div>
+              </div>
+
+              <!-- 테스트 버튼들 -->
+              <div class="space-y-2">
+                  <button onclick="testLevel(5)" class="w-full py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
+                      하트 5개 테스트
+                  </button>
+                  <button onclick="testLevel(8)" class="w-full py-2 bg-green-500 text-white rounded-lg hover:bg-green-600">
+                      하트 8개 테스트
+                  </button>
+                  <button onclick="testLevel(25)" class="w-full py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600">
+                      하트 25개 테스트
+                  </button>
+                  <button onclick="testLevel(60)" class="w-full py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600">
+                      하트 60개 테스트
+                  </button>
+                  <button onclick="testLevel(120)" class="w-full py-2 bg-red-500 text-white rounded-lg hover:bg-red-600">
+                      하트 120개 테스트
+                  </button>
+                  <button onclick="testLevel(250)" class="w-full py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600">
+                      하트 250개 테스트
+                  </button>
+              </div>
+              
+              <div class="mt-6 p-4 bg-gray-50 rounded-lg">
+                  <h3 class="font-semibold mb-2">레벨 기준:</h3>
+                  <ul class="text-sm text-gray-600 space-y-1">
+                      <li>• 호기심 씨앗: 0-20 하트</li>
+                      <li>• 호기심 새싹: 21-50 하트</li>
+                      <li>• 호기심 꽃: 51-100 하트</li>
+                      <li>• 호기심 나무: 101-200 하트</li>
+                      <li>• 호기심 숲: 201+ 하트</li>
+                  </ul>
+              </div>
+          </div>
+
+          <script>
+              // 테스트용 간단한 레벨 시스템
+              function testLevel(likes) {
+                  console.log('🎯 레벨 테스트 시작, likes:', likes);
+                  
+                  const levels = [
+                      { 
+                          name: '호기심 씨앗', 
+                          min: 0, 
+                          max: 20, 
+                          image: 'https://page.gensparksite.com/v1/base64_upload/91beec7bb9902dac001b3c9a5526b529',
+                          color: 'from-green-400 to-green-500',
+                          bgColor: 'bg-green-100',
+                          description: '질문을 시작하는 단계'
+                      },
+                      { 
+                          name: '호기심 새싹', 
+                          min: 21, 
+                          max: 50, 
+                          image: 'https://page.gensparksite.com/v1/base64_upload/a629b175d0247b9f540865bcb35d83df',
+                          color: 'from-green-500 to-green-600',
+                          bgColor: 'bg-green-200',
+                          description: '질문 습관이 자라는 단계'
+                      },
+                      { 
+                          name: '호기심 꽃', 
+                          min: 51, 
+                          max: 100, 
+                          image: 'https://page.gensparksite.com/v1/base64_upload/4695dece394aa487b0b2bb723fcbef3d',
+                          color: 'from-pink-500 to-pink-600',
+                          bgColor: 'bg-pink-200',
+                          description: '아름다운 질문을 피우는 단계'
+                      },
+                      { 
+                          name: '호기심 나무', 
+                          min: 101, 
+                          max: 200, 
+                          image: 'https://page.gensparksite.com/v1/base64_upload/06831e87699528949d2c262e8ff5223c',
+                          color: 'from-green-700 to-green-800',
+                          bgColor: 'bg-green-400',
+                          description: '깊이있는 지혜를 키우는 단계'
+                      },
+                      { 
+                          name: '호기심 숲', 
+                          min: 201, 
+                          max: Infinity, 
+                          image: 'https://page.gensparksite.com/v1/base64_upload/b1f3dc14d6e9273914102f2fd64b40bc',
+                          color: 'from-emerald-600 to-emerald-800',
+                          bgColor: 'bg-emerald-200',
+                          description: '질문의 마스터가 된 단계'
+                      }
+                  ];
+
+                  const currentLevel = levels.find(level => likes >= level.min && likes <= level.max);
+                  const nextLevel = levels.find(level => level.min > likes);
+                  
+                  console.log('🔍 현재 레벨:', currentLevel);
+                  console.log('🔍 다음 레벨:', nextLevel);
+
+                  if (currentLevel) {
+                      // 레벨 아이콘 업데이트
+                      const levelIcon = document.getElementById('level-icon');
+                      console.log('🖼️ levelIcon 요소:', levelIcon);
+                      
+                      if (levelIcon) {
+                          const imgHTML = \`<img src="\${currentLevel.image}" alt="\${currentLevel.name}" class="w-16 h-16 object-contain pixel-art" style="image-rendering: pixelated;">\`;
+                          console.log('🖼️ 설정할 이미지 HTML:', imgHTML);
+                          
+                          levelIcon.className = \`w-20 h-20 mx-auto mb-3 rounded-2xl flex items-center justify-center \${currentLevel.bgColor} border-4 border-white shadow-lg transform hover:scale-105 transition-transform overflow-hidden\`;
+                          levelIcon.innerHTML = imgHTML;
+                          console.log('✅ 레벨 아이콘 업데이트 완료');
+                      } else {
+                          console.error('❌ level-icon 요소를 찾을 수 없습니다');
+                      }
+
+                      // 레벨 이름 업데이트
+                      const levelName = document.getElementById('level-name');
+                      if (levelName) levelName.textContent = currentLevel.name;
+
+                      // 진행도 업데이트
+                      const levelProgress = document.getElementById('level-progress');
+                      if (levelProgress) levelProgress.textContent = \`총 하트: \${likes}개 (누적)\`;
+
+                      // 다음 레벨 정보
+                      const nextLevelElement = document.getElementById('next-level');
+                      if (nextLevelElement) {
+                          if (nextLevel) {
+                              const remainingLikes = nextLevel.min - likes;
+                              nextLevelElement.textContent = \`다음 단계: \${nextLevel.name} (하트 \${remainingLikes}개 더 필요)\`;
+                              
+                              // 프로그레스 바
+                              const progressBar = document.getElementById('progress-bar');
+                              if (progressBar) {
+                                  const currentLevelRange = currentLevel.max - currentLevel.min + 1;
+                                  const currentLevelProgress = likes - currentLevel.min;
+                                  const progress = Math.min(100, (currentLevelProgress / currentLevelRange) * 100);
+                                  progressBar.style.width = \`\${progress}%\`;
+                              }
+                          } else {
+                              nextLevelElement.textContent = '최고 레벨 달성! 호기심 숲의 주인이 되셨습니다! 🎉';
+                              const progressBar = document.getElementById('progress-bar');
+                              if (progressBar) progressBar.style.width = '100%';
+                          }
+                      }
+                  }
+              }
+          </script>
+    </body>
+    </html>
+  `);
 })
 
 export default app

@@ -145,11 +145,27 @@ class QuestionClassroomApp {
       });
     }
 
-    // 비밀번호 찾기 버튼
-    const forgotPasswordBtn = document.getElementById('forgot-password-btn');
-    if (forgotPasswordBtn) {
-      forgotPasswordBtn.addEventListener('click', () => {
-        document.getElementById('forgot-password-modal').classList.remove('hidden');
+    // 아이디 찾기 버튼
+    const findUsernameBtn = document.getElementById('find-username-btn');
+    if (findUsernameBtn) {
+      findUsernameBtn.addEventListener('click', () => {
+        document.getElementById('find-username-modal').classList.remove('hidden');
+      });
+    }
+
+    // 비밀번호 재설정 버튼
+    const resetPasswordBtn = document.getElementById('reset-password-btn');
+    if (resetPasswordBtn) {
+      resetPasswordBtn.addEventListener('click', () => {
+        document.getElementById('reset-password-modal').classList.remove('hidden');
+      });
+    }
+
+    // 개인정보 수정 버튼
+    const updateProfileBtn = document.getElementById('update-profile-btn');
+    if (updateProfileBtn) {
+      updateProfileBtn.addEventListener('click', () => {
+        document.getElementById('update-profile-modal').classList.remove('hidden');
       });
     }
 
@@ -179,6 +195,24 @@ class QuestionClassroomApp {
     const loginForm = document.getElementById('login-form');
     if (loginForm) {
       loginForm.addEventListener('submit', this.handleLogin.bind(this));
+    }
+
+    // 아이디 찾기 폼 이벤트
+    const findUsernameForm = document.getElementById('find-username-form');
+    if (findUsernameForm) {
+      findUsernameForm.addEventListener('submit', this.handleFindUsername.bind(this));
+    }
+
+    // 비밀번호 재설정 폼 이벤트
+    const resetPasswordForm = document.getElementById('reset-password-form');
+    if (resetPasswordForm) {
+      resetPasswordForm.addEventListener('submit', this.handleResetPassword.bind(this));
+    }
+
+    // 개인정보 수정 폼 이벤트
+    const updateProfileForm = document.getElementById('update-profile-form');
+    if (updateProfileForm) {
+      updateProfileForm.addEventListener('submit', this.handleUpdateProfile.bind(this));
     }
 
     const forgotPasswordForm = document.getElementById('forgot-password-form');
@@ -273,24 +307,92 @@ class QuestionClassroomApp {
     }
   }
 
-  // 비밀번호 찾기 처리
-  async handleForgotPassword(e) {
+  // 아이디 찾기 처리
+  async handleFindUsername(e) {
     e.preventDefault();
     const formData = new FormData(e.target);
     
     try {
-      const response = await axios.post('/api/auth/forgot-password', {
+      const response = await axios.post('/api/auth/find-username', {
+        full_name: formData.get('full_name'),
         email: formData.get('email')
       });
 
       if (response.data.success) {
-        document.getElementById('forgot-password-modal').classList.add('hidden');
+        document.getElementById('find-username-modal').classList.add('hidden');
         e.target.reset();
-        // 개발용으로 임시 비밀번호 표시
-        this.showToast(`임시 비밀번호: ${response.data.temp_password}`, 'info', 10000);
+        this.showToast(`아이디: ${response.data.username}`, 'success', 10000);
       }
     } catch (error) {
-      this.showToast(error.response?.data?.error || '비밀번호 찾기에 실패했습니다.', 'error');
+      this.showToast(error.response?.data?.error || '아이디 찾기에 실패했습니다.', 'error');
+    }
+  }
+
+  // 비밀번호 재설정 처리
+  async handleResetPassword(e) {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    
+    const newPassword = formData.get('new_password');
+    const confirmPassword = formData.get('confirm_password');
+    
+    if (newPassword !== confirmPassword) {
+      this.showToast('비밀번호가 일치하지 않습니다.', 'error');
+      return;
+    }
+    
+    try {
+      const response = await axios.post('/api/auth/reset-password', {
+        username: formData.get('username'),
+        email: formData.get('email'),
+        new_password: newPassword
+      });
+
+      if (response.data.success) {
+        document.getElementById('reset-password-modal').classList.add('hidden');
+        e.target.reset();
+        this.showToast('비밀번호가 성공적으로 변경되었습니다.', 'success');
+      }
+    } catch (error) {
+      this.showToast(error.response?.data?.error || '비밀번호 재설정에 실패했습니다.', 'error');
+    }
+  }
+
+  // 개인정보 수정 처리
+  async handleUpdateProfile(e) {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    
+    const newPassword = formData.get('new_password');
+    const confirmPassword = formData.get('confirm_password');
+    
+    if (newPassword && newPassword !== confirmPassword) {
+      this.showToast('새 비밀번호가 일치하지 않습니다.', 'error');
+      return;
+    }
+    
+    try {
+      const response = await axios.post('/api/teacher/update-profile', {
+        user_id: this.currentUser.id,
+        current_password: formData.get('current_password'),
+        new_email: formData.get('new_email'),
+        new_password: newPassword || null
+      });
+
+      if (response.data.success) {
+        document.getElementById('update-profile-modal').classList.add('hidden');
+        e.target.reset();
+        this.showToast(response.data.message, 'success');
+        
+        // 이메일이 변경된 경우 페이지 새로고침
+        if (response.data.updated_fields.includes('이메일')) {
+          setTimeout(() => {
+            window.location.reload();
+          }, 2000);
+        }
+      }
+    } catch (error) {
+      this.showToast(error.response?.data?.error || '개인정보 수정에 실패했습니다.', 'error');
     }
   }
 
@@ -619,15 +721,41 @@ class QuestionClassroomApp {
     if (!this.currentUser) return;
     
     try {
+      console.log('📊 개인 통계 로드 시작, user_id:', this.currentUser.id);
       const response = await axios.get(`/api/student/stats/${this.currentUser.id}`);
+      console.log('📊 API 응답:', response.data);
       if (response.data.success) {
         this.updateStudentStats(response.data.stats);
         // 하트(좋아요) 수 기반으로 레벨 계산 (누적형)
+        console.log('📊 total_likes 전달:', response.data.stats.total_likes);
         this.updateStudentLevel(response.data.stats.total_likes);
       }
     } catch (error) {
       console.error('개인 통계 로드 오류:', error);
     }
+  }
+  
+  // 디버깅용 레벨 시스템 테스트
+  testLevelSystem(likes = 8) {
+    console.log('🎯 레벨 시스템 테스트 시작 - likes:', likes);
+    // 학생 페이지에서만 작동
+    if (window.location.pathname === '/student') {
+      this.updateStudentLevel(likes);
+    } else {
+      console.log('🚫 학생 페이지가 아님 - 테스트 건너뛀');
+    }
+  }
+  
+  // 디버깅용 임시 로그인 설정
+  setTestUser(userId = 3) {
+    console.log('👤 테스트 사용자 설정 - userId:', userId);
+    this.currentUser = { id: userId, username: 'student3', full_name: '최하린' };
+    // 쿠키 설정
+    this.setCookie('user_id', userId);
+    this.setCookie('username', 'student3');
+    this.setCookie('full_name', '최하린');
+    this.setCookie('user_type', 'student');
+    console.log('✅ 테스트 사용자 설정 완료');
   }
 
   // 통계 업데이트
@@ -646,12 +774,14 @@ class QuestionClassroomApp {
 
   // 레벨 시스템 업데이트 (하트/좋아요 수 기반 - 누적형)
   updateStudentLevel(totalLikes) {
+    console.log('🎯 updateStudentLevel 호출됨, totalLikes:', totalLikes);
     const levels = [
       { 
         name: '호기심 씨앗', 
         min: 0, 
         max: 20, 
         image: 'https://page.gensparksite.com/v1/base64_upload/91beec7bb9902dac001b3c9a5526b529',
+        debug: true,
         color: 'from-green-400 to-green-500',
         bgColor: 'bg-green-100',
         description: '질문을 시작하는 단계'
@@ -696,13 +826,22 @@ class QuestionClassroomApp {
 
     const currentLevel = levels.find(level => totalLikes >= level.min && totalLikes <= level.max);
     const nextLevel = levels.find(level => level.min > totalLikes);
+    
+    console.log('🔍 현재 레벨:', currentLevel);
+    console.log('🔍 다음 레벨:', nextLevel);
 
     if (currentLevel) {
       // 레벨 아이콘 업데이트 - 픽셀 아트 이미지 사용
       const levelIcon = document.getElementById('level-icon');
+      console.log('🖼️ levelIcon 요소:', levelIcon);
       if (levelIcon) {
+        const imgHTML = `<img src="${currentLevel.image}" alt="${currentLevel.name}" class="w-16 h-16 object-contain pixel-art" style="image-rendering: pixelated;">`;
+        console.log('🖼️ 설정할 이미지 HTML:', imgHTML);
         levelIcon.className = `w-20 h-20 mx-auto mb-3 rounded-2xl flex items-center justify-center ${currentLevel.bgColor} border-4 border-white shadow-lg transform hover:scale-105 transition-transform overflow-hidden`;
-        levelIcon.innerHTML = `<img src="${currentLevel.image}" alt="${currentLevel.name}" class="w-16 h-16 object-contain pixel-art" style="image-rendering: pixelated;">`;
+        levelIcon.innerHTML = imgHTML;
+        console.log('✅ 레벨 아이콘 업데이트 완료');
+      } else {
+        console.error('❌ level-icon 요소를 찾을 수 없습니다');
       }
 
       // 레벨 이름 업데이트
@@ -1832,3 +1971,33 @@ if (document.readyState === 'loading') {
   window.app = appInstance; // HTML onclick에서 사용할 전역 참조
   window.questionApp = appInstance; // 디버깅용 참조
 }
+
+// 디버깅용 전역 함수
+window.testLevel = (likes) => {
+  console.log('🔬 전역 testLevel 호출, likes:', likes);
+  if (window.app && window.app.testLevelSystem) {
+    window.app.testLevelSystem(likes);
+  } else {
+    console.error('🚫 app 인스턴스 또는 testLevelSystem 메소드가 없습니다');
+  }
+};
+
+// 디버깅용 테스트 사용자 설정
+window.setTestUser = (userId) => {
+  console.log('🔬 전역 setTestUser 호출, userId:', userId);
+  if (window.app && window.app.setTestUser) {
+    window.app.setTestUser(userId);
+  } else {
+    console.error('🚫 app 인스턴스 또는 setTestUser 메소드가 없습니다');
+  }
+};
+
+// 디버깅용 통계 로드 테스트
+window.testLoadStats = () => {
+  console.log('🔬 전역 testLoadStats 호출');
+  if (window.app && window.app.loadStudentPersonalStats) {
+    window.app.loadStudentPersonalStats();
+  } else {
+    console.error('🚫 app 인스턴스 또는 loadStudentPersonalStats 메소드가 없습니다');
+  }
+};
