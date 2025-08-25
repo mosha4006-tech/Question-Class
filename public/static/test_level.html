@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>레벨 시스템 테스트</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="/static/style.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100 p-8">
+    <div class="max-w-md mx-auto bg-white rounded-2xl p-6 shadow-lg">
+        <h1 class="text-2xl font-bold mb-6 text-center">레벨 시스템 테스트</h1>
+        
+        <!-- 레벨 표시 영역 -->
+        <div id="student-level-display" class="text-center mb-6">
+            <div id="level-icon" class="w-20 h-20 mx-auto mb-3 rounded-2xl flex items-center justify-center bg-gray-200">
+                <i class="fas fa-seed text-2xl"></i>
+            </div>
+            <div id="level-name" class="font-bold text-lg text-green-800 mb-2">호기심 씨앗</div>
+            <div id="level-progress" class="text-sm text-green-600 mb-3">총 하트: 0개</div>
+            <div class="bg-green-100 rounded-full h-2 overflow-hidden">
+                <div id="progress-bar" class="bg-green-500 h-full transition-all duration-500" style="width: 0%"></div>
+            </div>
+            <div id="next-level" class="text-xs text-gray-500 mt-2">다음 단계: 호기심 새싹 (21개)</div>
+        </div>
+
+        <!-- 테스트 버튼들 -->
+        <div class="space-y-2">
+            <button onclick="testLevel(5)" class="w-full py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
+                하트 5개 테스트
+            </button>
+            <button onclick="testLevel(8)" class="w-full py-2 bg-green-500 text-white rounded-lg hover:bg-green-600">
+                하트 8개 테스트
+            </button>
+            <button onclick="testLevel(25)" class="w-full py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600">
+                하트 25개 테스트
+            </button>
+            <button onclick="testLevel(60)" class="w-full py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600">
+                하트 60개 테스트
+            </button>
+            <button onclick="testLevel(120)" class="w-full py-2 bg-red-500 text-white rounded-lg hover:bg-red-600">
+                하트 120개 테스트
+            </button>
+            <button onclick="testLevel(250)" class="w-full py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600">
+                하트 250개 테스트
+            </button>
+        </div>
+        
+        <div class="mt-6 p-4 bg-gray-50 rounded-lg">
+            <h3 class="font-semibold mb-2">레벨 기준:</h3>
+            <ul class="text-sm text-gray-600 space-y-1">
+                <li>• 호기심 씨앗: 0-20 하트</li>
+                <li>• 호기심 새싹: 21-50 하트</li>
+                <li>• 호기심 꽃: 51-100 하트</li>
+                <li>• 호기심 나무: 101-200 하트</li>
+                <li>• 호기심 숲: 201+ 하트</li>
+            </ul>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+    <script>
+        // 테스트용 간단한 레벨 시스템
+        function testLevel(likes) {
+            console.log('🎯 레벨 테스트 시작, likes:', likes);
+            
+            const levels = [
+                { 
+                    name: '호기심 씨앗', 
+                    min: 0, 
+                    max: 20, 
+                    image: 'https://page.gensparksite.com/v1/base64_upload/91beec7bb9902dac001b3c9a5526b529',
+                    color: 'from-green-400 to-green-500',
+                    bgColor: 'bg-green-100',
+                    description: '질문을 시작하는 단계'
+                },
+                { 
+                    name: '호기심 새싹', 
+                    min: 21, 
+                    max: 50, 
+                    image: 'https://page.gensparksite.com/v1/base64_upload/a629b175d0247b9f540865bcb35d83df',
+                    color: 'from-green-500 to-green-600',
+                    bgColor: 'bg-green-200',
+                    description: '질문 습관이 자라는 단계'
+                },
+                { 
+                    name: '호기심 꽃', 
+                    min: 51, 
+                    max: 100, 
+                    image: 'https://page.gensparksite.com/v1/base64_upload/4695dece394aa487b0b2bb723fcbef3d',
+                    color: 'from-pink-500 to-pink-600',
+                    bgColor: 'bg-pink-200',
+                    description: '아름다운 질문을 피우는 단계'
+                },
+                { 
+                    name: '호기심 나무', 
+                    min: 101, 
+                    max: 200, 
+                    image: 'https://page.gensparksite.com/v1/base64_upload/06831e87699528949d2c262e8ff5223c',
+                    color: 'from-green-700 to-green-800',
+                    bgColor: 'bg-green-400',
+                    description: '깊이있는 지혜를 키우는 단계'
+                },
+                { 
+                    name: '호기심 숲', 
+                    min: 201, 
+                    max: Infinity, 
+                    image: 'https://page.gensparksite.com/v1/base64_upload/b1f3dc14d6e9273914102f2fd64b40bc',
+                    color: 'from-emerald-600 to-emerald-800',
+                    bgColor: 'bg-emerald-200',
+                    description: '질문의 마스터가 된 단계'
+                }
+            ];
+
+            const currentLevel = levels.find(level => likes >= level.min && likes <= level.max);
+            const nextLevel = levels.find(level => level.min > likes);
+            
+            console.log('🔍 현재 레벨:', currentLevel);
+            console.log('🔍 다음 레벨:', nextLevel);
+
+            if (currentLevel) {
+                // 레벨 아이콘 업데이트
+                const levelIcon = document.getElementById('level-icon');
+                console.log('🖼️ levelIcon 요소:', levelIcon);
+                
+                if (levelIcon) {
+                    const imgHTML = `<img src="${currentLevel.image}" alt="${currentLevel.name}" class="w-16 h-16 object-contain pixel-art" style="image-rendering: pixelated;">`;
+                    console.log('🖼️ 설정할 이미지 HTML:', imgHTML);
+                    
+                    levelIcon.className = `w-20 h-20 mx-auto mb-3 rounded-2xl flex items-center justify-center ${currentLevel.bgColor} border-4 border-white shadow-lg transform hover:scale-105 transition-transform overflow-hidden`;
+                    levelIcon.innerHTML = imgHTML;
+                    console.log('✅ 레벨 아이콘 업데이트 완료');
+                } else {
+                    console.error('❌ level-icon 요소를 찾을 수 없습니다');
+                }
+
+                // 레벨 이름 업데이트
+                const levelName = document.getElementById('level-name');
+                if (levelName) levelName.textContent = currentLevel.name;
+
+                // 진행도 업데이트
+                const levelProgress = document.getElementById('level-progress');
+                if (levelProgress) levelProgress.textContent = `총 하트: ${likes}개 (누적)`;
+
+                // 다음 레벨 정보
+                const nextLevelElement = document.getElementById('next-level');
+                if (nextLevelElement) {
+                    if (nextLevel) {
+                        const remainingLikes = nextLevel.min - likes;
+                        nextLevelElement.textContent = `다음 단계: ${nextLevel.name} (하트 ${remainingLikes}개 더 필요)`;
+                        
+                        // 프로그레스 바
+                        const progressBar = document.getElementById('progress-bar');
+                        if (progressBar) {
+                            const currentLevelRange = currentLevel.max - currentLevel.min + 1;
+                            const currentLevelProgress = likes - currentLevel.min;
+                            const progress = Math.min(100, (currentLevelProgress / currentLevelRange) * 100);
+                            progressBar.style.width = `${progress}%`;
+                        }
+                    } else {
+                        nextLevelElement.textContent = '최고 레벨 달성! 호기심 숲의 주인이 되셨습니다! 🎉';
+                        const progressBar = document.getElementById('progress-bar');
+                        if (progressBar) progressBar.style.width = '100%';
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+</html>
