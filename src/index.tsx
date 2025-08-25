@@ -467,15 +467,22 @@ app.get('/api/questions/top-weekly', async (c) => {
 // 질문 작성
 app.post('/api/questions', async (c) => {
   try {
-    const { user_id, content, reason, category } = await c.req.json()
+    // 세션에서 user_id 가져오기
+    const userId = getCookie(c, 'user_id')
     
-    if (!user_id || !content || !reason || !category) {
+    if (!userId) {
+      return c.json({ error: '로그인이 필요합니다.' }, 401)
+    }
+    
+    const { content, reason, category } = await c.req.json()
+    
+    if (!content || !reason || !category) {
       return c.json({ error: '모든 필드를 입력해주세요. (질문 내용, 작성 이유, 카테고리)' }, 400)
     }
 
     const result = await c.env.DB.prepare(
       'INSERT INTO questions (user_id, content, reason, category) VALUES (?, ?, ?, ?)'
-    ).bind(user_id, content, reason, category).run()
+    ).bind(userId, content, reason, category).run()
 
     // 생성된 질문 정보 반환
     const newQuestion = await c.env.DB.prepare(`
@@ -519,15 +526,23 @@ app.get('/api/questions/:id/comments', async (c) => {
 app.post('/api/questions/:id/comments', async (c) => {
   try {
     const questionId = c.req.param('id')
-    const { user_id, content } = await c.req.json()
     
-    if (!user_id || !content) {
-      return c.json({ error: '사용자 ID와 댓글 내용을 입력해주세요.' }, 400)
+    // 세션에서 user_id 가져오기
+    const userId = getCookie(c, 'user_id')
+    
+    if (!userId) {
+      return c.json({ error: '로그인이 필요합니다.' }, 401)
+    }
+    
+    const { content } = await c.req.json()
+    
+    if (!content) {
+      return c.json({ error: '댓글 내용을 입력해주세요.' }, 400)
     }
 
     const result = await c.env.DB.prepare(
       'INSERT INTO comments (question_id, user_id, content) VALUES (?, ?, ?)'
-    ).bind(questionId, user_id, content).run()
+    ).bind(questionId, userId, content).run()
 
     // 생성된 댓글 정보 반환
     const newComment = await c.env.DB.prepare(`
@@ -551,9 +566,17 @@ app.post('/api/questions/:id/comments', async (c) => {
 app.put('/api/questions/:question_id', async (c) => {
   try {
     const questionId = c.req.param('question_id')
-    const { user_id, content, reason, category } = await c.req.json()
     
-    if (!user_id || !content || !reason || !category) {
+    // 세션에서 user_id 가져오기
+    const userId = getCookie(c, 'user_id')
+    
+    if (!userId) {
+      return c.json({ error: '로그인이 필요합니다.' }, 401)
+    }
+    
+    const { content, reason, category } = await c.req.json()
+    
+    if (!content || !reason || !category) {
       return c.json({ error: '모든 필드를 입력해주세요.' }, 400)
     }
 
@@ -566,7 +589,7 @@ app.put('/api/questions/:question_id', async (c) => {
       return c.json({ error: '질문을 찾을 수 없습니다.' }, 404)
     }
 
-    if (question.user_id != user_id) {
+    if (question.user_id != userId) {
       return c.json({ error: '본인이 작성한 질문만 수정할 수 있습니다.' }, 403)
     }
 
@@ -599,22 +622,24 @@ app.put('/api/questions/:question_id', async (c) => {
 app.post('/api/questions/:id/like', async (c) => {
   try {
     const questionId = c.req.param('id')
-    const { user_id } = await c.req.json()
     
-    if (!user_id) {
-      return c.json({ error: '사용자 ID를 입력해주세요.' }, 400)
+    // 세션에서 user_id 가져오기
+    const userId = getCookie(c, 'user_id')
+    
+    if (!userId) {
+      return c.json({ error: '로그인이 필요합니다.' }, 401)
     }
 
     // 기존 좋아요 확인
     const existingLike = await c.env.DB.prepare(
       'SELECT id FROM likes WHERE question_id = ? AND user_id = ?'
-    ).bind(questionId, user_id).first()
+    ).bind(questionId, userId).first()
 
     if (existingLike) {
       // 좋아요 취소
       await c.env.DB.prepare(
         'DELETE FROM likes WHERE question_id = ? AND user_id = ?'
-      ).bind(questionId, user_id).run()
+      ).bind(questionId, userId).run()
       
       return c.json({ 
         success: true, 
@@ -625,7 +650,7 @@ app.post('/api/questions/:id/like', async (c) => {
       // 좋아요 추가
       await c.env.DB.prepare(
         'INSERT INTO likes (question_id, user_id) VALUES (?, ?)'
-      ).bind(questionId, user_id).run()
+      ).bind(questionId, userId).run()
       
       return c.json({ 
         success: true, 
