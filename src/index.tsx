@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { serveStatic } from 'hono/cloudflare-workers'
+import { getCookie, setCookie } from 'hono/cookie'
 import { renderer } from './renderer'
 
 // TypeScript 바인딩 정의
@@ -40,6 +41,26 @@ app.post('/api/auth/login', async (c) => {
     if (!user) {
       return c.json({ error: '사용자명 또는 비밀번호가 올바르지 않습니다.' }, 401)
     }
+
+    // 사용자 정보를 쿠키에 저장 (세션 관리)
+    setCookie(c, 'user_id', user.id.toString(), {
+      httpOnly: false,
+      secure: false,
+      sameSite: 'Lax',
+      maxAge: 86400 // 24시간
+    })
+    setCookie(c, 'username', user.username, {
+      httpOnly: false,
+      secure: false,
+      sameSite: 'Lax',
+      maxAge: 86400 // 24시간
+    })
+    setCookie(c, 'user_type', user.user_type, {
+      httpOnly: false,
+      secure: false,
+      sameSite: 'Lax',
+      maxAge: 86400 // 24시간
+    })
 
     return c.json({ 
       success: true,
