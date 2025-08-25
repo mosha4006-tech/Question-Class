@@ -622,7 +622,8 @@ class QuestionClassroomApp {
       const response = await axios.get(`/api/student/stats/${this.currentUser.id}`);
       if (response.data.success) {
         this.updateStudentStats(response.data.stats);
-        this.updateStudentLevel(response.data.stats.total_likes);
+        // 질문 수 기반으로 레벨 계산 (누적형)
+        this.updateStudentLevel(response.data.stats.total_questions);
       }
     } catch (error) {
       console.error('개인 통계 로드 오류:', error);
@@ -643,53 +644,58 @@ class QuestionClassroomApp {
     });
   }
 
-  // 레벨 시스템 업데이트
-  updateStudentLevel(totalLikes) {
+  // 레벨 시스템 업데이트 (질문 수 기반 - 누적형)
+  updateStudentLevel(totalQuestions) {
     const levels = [
       { 
         name: '호기심 씨앗', 
         min: 0, 
-        max: 20, 
+        max: 4, 
         emoji: '🌱',
         color: 'from-green-400 to-green-500',
-        bgColor: 'bg-green-100'
+        bgColor: 'bg-green-100',
+        description: '첫 질문을 시작하는 단계'
       },
       { 
         name: '호기심 새싹', 
-        min: 21, 
-        max: 50, 
+        min: 5, 
+        max: 14, 
         emoji: '🌿',
         color: 'from-green-500 to-green-600',
-        bgColor: 'bg-green-200'
+        bgColor: 'bg-green-200',
+        description: '질문하는 습관이 생기는 단계'
       },
       { 
         name: '호기심 잎새', 
-        min: 51, 
-        max: 100, 
+        min: 15, 
+        max: 29, 
         emoji: '🍀',
         color: 'from-green-600 to-green-700',
-        bgColor: 'bg-green-300'
+        bgColor: 'bg-green-300',
+        description: '깊이있는 질문을 만드는 단계'
       },
       { 
         name: '호기심 나무', 
-        min: 101, 
-        max: 200, 
+        min: 30, 
+        max: 49, 
         emoji: '🌳',
         color: 'from-green-700 to-green-800',
-        bgColor: 'bg-green-400'
+        bgColor: 'bg-green-400',
+        description: '창의적 질문을 만드는 단계'
       },
       { 
         name: '호기심 정령왕', 
-        min: 201, 
+        min: 50, 
         max: Infinity, 
         emoji: '👑',
         color: 'from-yellow-500 to-orange-500',
-        bgColor: 'bg-yellow-200'
+        bgColor: 'bg-yellow-200',
+        description: '질문의 마스터 단계'
       }
     ];
 
-    const currentLevel = levels.find(level => totalLikes >= level.min && totalLikes <= level.max);
-    const nextLevel = levels.find(level => level.min > totalLikes);
+    const currentLevel = levels.find(level => totalQuestions >= level.min && totalQuestions <= level.max);
+    const nextLevel = levels.find(level => level.min > totalQuestions);
 
     if (currentLevel) {
       // 레벨 아이콘 업데이트 - 귀여운 픽셀 스타일 이모지
@@ -703,24 +709,27 @@ class QuestionClassroomApp {
       const levelName = document.getElementById('level-name');
       if (levelName) levelName.textContent = currentLevel.name;
 
-      // 진행도 업데이트
+      // 진행도 업데이트 (질문 수 기반)
       const levelProgress = document.getElementById('level-progress');
-      if (levelProgress) levelProgress.textContent = `총 좋아요: ${totalLikes}개`;
+      if (levelProgress) levelProgress.textContent = `총 질문 수: ${totalQuestions}개 (누적)`;
 
       // 다음 레벨 정보
       const nextLevelElement = document.getElementById('next-level');
       if (nextLevelElement) {
         if (nextLevel) {
-          nextLevelElement.textContent = `다음 단계: ${nextLevel.name} (${nextLevel.min}개)`;
+          const remainingQuestions = nextLevel.min - totalQuestions;
+          nextLevelElement.textContent = `다음 단계: ${nextLevel.name} (${remainingQuestions}개 더 필요)`;
           
           // 프로그레스 바
           const progressBar = document.getElementById('progress-bar');
           if (progressBar) {
-            const progress = Math.min(100, (totalLikes / nextLevel.min) * 100);
+            const currentLevelRange = currentLevel.max - currentLevel.min + 1;
+            const currentLevelProgress = totalQuestions - currentLevel.min;
+            const progress = Math.min(100, (currentLevelProgress / currentLevelRange) * 100);
             progressBar.style.width = `${progress}%`;
           }
         } else {
-          nextLevelElement.textContent = '최고 레벨 달성! 🎉';
+          nextLevelElement.textContent = '최고 레벨 달성! 질문의 마스터입니다! 🎉';
           const progressBar = document.getElementById('progress-bar');
           if (progressBar) progressBar.style.width = '100%';
         }
