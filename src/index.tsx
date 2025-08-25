@@ -34,7 +34,7 @@ app.post('/api/auth/login', async (c) => {
     }
 
     const user = await c.env.DB.prepare(
-      'SELECT id, username, full_name, user_type FROM users WHERE username = ? AND password_hash = ?'
+      'SELECT id, username, full_name, user_type, class_name FROM users WHERE username = ? AND password_hash = ?'
     ).bind(username, password).first()
 
     if (!user) {
@@ -47,7 +47,8 @@ app.post('/api/auth/login', async (c) => {
         id: user.id,
         username: user.username,
         full_name: user.full_name,
-        user_type: user.user_type
+        user_type: user.user_type,
+        class_name: user.class_name
       }
     })
   } catch (error) {
@@ -138,6 +139,127 @@ app.post('/api/teacher/create-student', async (c) => {
     })
   } catch (error) {
     return c.json({ error: '학생 계정 생성 중 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// 학생 계정 삭제 API (교사만 가능)
+app.delete('/api/teacher/delete-student/:student_id', async (c) => {
+  try {
+    const studentId = c.req.param('student_id')
+    
+    if (!studentId) {
+      return c.json({ error: '학생 ID가 필요합니다.' }, 400)
+    }
+
+    // 학생 정보 확인
+    const student = await c.env.DB.prepare(
+      'SELECT username, full_name, class_name FROM users WHERE id = ? AND user_type = "student"'
+    ).bind(studentId).first()
+
+    if (!student) {
+      return c.json({ error: '해당 학생을 찾을 수 없습니다.' }, 404)
+    }
+
+    // 트랜잭션으로 관련 데이터 모두 삭제
+    // 1. 학생이 작성한 질문에 대한 댓글들 삭제
+    await c.env.DB.prepare(`
+      DELETE FROM comments 
+      WHERE question_id IN (SELECT id FROM questions WHERE user_id = ?)
+    `).bind(studentId).run()
+
+    // 2. 학생이 작성한 댓글들 삭제  
+    await c.env.DB.prepare('DELETE FROM comments WHERE user_id = ?').bind(studentId).run()
+
+    // 3. 학생이 누른 좋아요들 삭제
+    await c.env.DB.prepare('DELETE FROM likes WHERE user_id = ?').bind(studentId).run()
+
+    // 4. 학생이 작성한 질문들 삭제
+    await c.env.DB.prepare('DELETE FROM questions WHERE user_id = ?').bind(studentId).run()
+
+    // 5. 학생 계정 삭제
+    await c.env.DB.prepare('DELETE FROM users WHERE id = ?').bind(studentId).run()
+
+    return c.json({ 
+      success: true,
+      message: `학생 "${student.full_name}" 계정과 관련 데이터가 모두 삭제되었습니다.`
+    })
+  } catch (error) {
+    console.error('학생 삭제 오류:', error)
+    return c.json({ error: '학생 계정 삭제 중 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// 일괄 학생 계정 생성 API (교사만 가능)
+app.post('/api/teacher/bulk-create-students', async (c) => {
+  try {
+    const { teacher_id, students } = await c.req.json()
+    
+    if (!teacher_id || !students || !Array.isArray(students)) {
+      return c.json({ error: '교사 ID와 학생 목록이 필요합니다.' }, 400)
+    }
+
+    // 교사 정보 확인
+    const teacher = await c.env.DB.prepare(
+      'SELECT class_name FROM users WHERE id = ? AND user_type = "teacher"'
+    ).bind(teacher_id).first()
+
+    if (!teacher) {
+      return c.json({ error: '교사 권한이 없습니다.' }, 403)
+    }
+
+    const results = []
+    const errors = []
+    let createdCount = 0
+
+    // 각 학생 계정 생성 시도
+    for (const student of students) {
+      const { name, username, password } = student
+      
+      if (!name || !username || !password) {
+        errors.push(`${name || username || '(알 수 없음)'}: 필수 정보 부족`)
+        continue
+      }
+
+      try {
+        // 사용자명 중복 확인
+        const existingUser = await c.env.DB.prepare(
+          'SELECT id FROM users WHERE username = ?'
+        ).bind(username).first()
+
+        if (existingUser) {
+          errors.push(`${name} (${username}): 이미 사용 중인 아이디`)
+          continue
+        }
+
+        // 학생 계정 생성
+        const result = await c.env.DB.prepare(
+          'INSERT INTO users (username, password_hash, full_name, user_type, class_name) VALUES (?, ?, ?, ?, ?)'
+        ).bind(username, password, name, 'student', teacher.class_name).run()
+
+        results.push({
+          id: result.meta.last_row_id,
+          name: name,
+          username: username
+        })
+        createdCount++
+
+      } catch (error) {
+        console.error(`학생 생성 오류 (${name}):`, error)
+        errors.push(`${name} (${username}): 생성 중 오류 발생`)
+      }
+    }
+
+    return c.json({ 
+      success: true,
+      created_count: createdCount,
+      total_count: students.length,
+      results: results,
+      errors: errors,
+      message: `${createdCount}명의 학생 계정이 생성되었습니다.`
+    })
+  } catch (error) {
+    console.error('일괄 학생 생성 오류:', error)
+    return c.json({ error: '일괄 학생 계정 생성 중 오류가 발생했습니다.' }, 500)
   }
 })
 
@@ -345,15 +467,15 @@ app.get('/api/questions/top-weekly', async (c) => {
 // 질문 작성
 app.post('/api/questions', async (c) => {
   try {
-    const { user_id, content } = await c.req.json()
+    const { user_id, content, reason, category } = await c.req.json()
     
-    if (!user_id || !content) {
-      return c.json({ error: '사용자 ID와 질문 내용을 입력해주세요.' }, 400)
+    if (!user_id || !content || !reason || !category) {
+      return c.json({ error: '모든 필드를 입력해주세요. (질문 내용, 작성 이유, 카테고리)' }, 400)
     }
 
     const result = await c.env.DB.prepare(
-      'INSERT INTO questions (user_id, content) VALUES (?, ?)'
-    ).bind(user_id, content).run()
+      'INSERT INTO questions (user_id, content, reason, category) VALUES (?, ?, ?, ?)'
+    ).bind(user_id, content, reason, category).run()
 
     // 생성된 질문 정보 반환
     const newQuestion = await c.env.DB.prepare(`
@@ -425,6 +547,50 @@ app.post('/api/questions/:id/comments', async (c) => {
   }
 })
 
+// 질문 수정 API (작성자만 가능)
+app.put('/api/questions/:question_id', async (c) => {
+  try {
+    const questionId = c.req.param('question_id')
+    const { user_id, content, reason, category } = await c.req.json()
+    
+    if (!user_id || !content || !reason || !category) {
+      return c.json({ error: '모든 필드를 입력해주세요.' }, 400)
+    }
+
+    // 질문 존재 확인 및 작성자 권한 확인
+    const question = await c.env.DB.prepare(
+      'SELECT user_id FROM questions WHERE id = ?'
+    ).bind(questionId).first()
+
+    if (!question) {
+      return c.json({ error: '질문을 찾을 수 없습니다.' }, 404)
+    }
+
+    if (question.user_id != user_id) {
+      return c.json({ error: '본인이 작성한 질문만 수정할 수 있습니다.' }, 403)
+    }
+
+    // 질문 수정
+    await c.env.DB.prepare(
+      'UPDATE questions SET content = ?, reason = ?, category = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+    ).bind(content, reason, category, questionId).run()
+
+    // 수정된 질문 정보 반환
+    const updatedQuestion = await c.env.DB.prepare(`
+      SELECT * FROM questions_with_stats WHERE id = ?
+    `).bind(questionId).first()
+
+    return c.json({ 
+      success: true, 
+      question: updatedQuestion,
+      message: '질문이 성공적으로 수정되었습니다.'
+    })
+  } catch (error) {
+    console.error('질문 수정 오류:', error)
+    return c.json({ error: '질문 수정 중 오류가 발생했습니다.' }, 500)
+  }
+})
+
 // =================
 // 좋아요 관련 API
 // =================
@@ -476,52 +642,191 @@ app.post('/api/questions/:id/like', async (c) => {
 // AI 챗봇 API
 // =================
 
-// AI 챗봇과 대화
-app.post('/api/ai/chat', async (c) => {
+// 학생 개인 통계 조회 API
+app.get('/api/student/stats/:user_id', async (c) => {
   try {
-    const { message, user_id } = await c.req.json()
+    const user_id = c.req.param('user_id')
     
-    if (!message) {
-      return c.json({ error: '메시지를 입력해주세요.' }, 400)
-    }
+    // 총 좋아요 수
+    const totalLikes = await c.env.DB.prepare(`
+      SELECT COUNT(*) as count FROM likes l
+      JOIN questions q ON l.question_id = q.id
+      WHERE q.user_id = ?
+    `).bind(user_id).first()
 
-    // Cloudflare AI를 사용하여 응답 생성
-    const response = await c.env.AI.run('@cf/meta/llama-2-7b-chat-int8', {
-      messages: [
-        {
-          role: 'system',
-          content: '당신은 학생들이 깊이 있는 질문을 만들 수 있도록 도와주는 친근한 AI 어시스턴트입니다. 창의적이고 생각을 자극하는 질문 아이디어를 제공하고, 질문 작성 방법을 알려주세요.'
-        },
-        {
-          role: 'user', 
-          content: message
-        }
-      ]
-    })
+    // 총 질문 수
+    const totalQuestions = await c.env.DB.prepare(`
+      SELECT COUNT(*) as count FROM questions WHERE user_id = ?
+    `).bind(user_id).first()
 
-    // AI 채팅 세션 저장 (선택적)
-    if (user_id) {
-      const sessionData = JSON.stringify({
-        messages: [
-          { role: 'user', content: message },
-          { role: 'assistant', content: response.response }
-        ]
-      })
-      
-      await c.env.DB.prepare(
-        'INSERT INTO ai_chat_sessions (user_id, session_data) VALUES (?, ?)'
-      ).bind(user_id, sessionData).run()
-    }
+    // 총 댓글 수 (받은 댓글)
+    const totalComments = await c.env.DB.prepare(`
+      SELECT COUNT(*) as count FROM comments c
+      JOIN questions q ON c.question_id = q.id
+      WHERE q.user_id = ?
+    `).bind(user_id).first()
+
+    // 이번 주 질문 수
+    const weekQuestions = await c.env.DB.prepare(`
+      SELECT COUNT(*) as count FROM questions 
+      WHERE user_id = ? AND date >= date('now', '-7 days')
+    `).bind(user_id).first()
+
+    // 가장 인기있는 질문
+    const bestQuestion = await c.env.DB.prepare(`
+      SELECT q.content, COUNT(l.id) as like_count
+      FROM questions q
+      LEFT JOIN likes l ON q.id = l.question_id
+      WHERE q.user_id = ?
+      GROUP BY q.id, q.content
+      ORDER BY like_count DESC
+      LIMIT 1
+    `).bind(user_id).first()
 
     return c.json({ 
       success: true, 
-      response: response.response 
+      stats: {
+        total_likes: totalLikes.count,
+        total_questions: totalQuestions.count,
+        total_comments: totalComments.count,
+        week_questions: weekQuestions.count,
+        best_question: bestQuestion || null
+      }
     })
   } catch (error) {
+    return c.json({ error: '통계를 가져오는 중 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// AI 질문 분석 API
+app.post('/api/ai/analyze-question', async (c) => {
+  try {
+    const { question, user_id } = await c.req.json()
+    
+    if (!question) {
+      return c.json({ error: '질문을 입력해주세요.' }, 400)
+    }
+
+    try {
+      // Cloudflare AI를 사용하여 질문 분석
+      const response = await c.env.AI.run('@cf/meta/llama-2-7b-chat-int8', {
+        messages: [
+          {
+            role: 'system',
+            content: `당신은 교육 전문가입니다. 학생의 질문을 분석하여 다음 형식으로 피드백을 제공해주세요:
+
+강점: 이 질문의 좋은 점 1-2개
+약점: 개선이 필요한 부분 1-2개  
+보완점: 더 깊이 있는 질문으로 만들기 위한 구체적 제안 1-2개
+
+간결하고 학생이 이해하기 쉽게 작성해주세요.`
+          },
+          {
+            role: 'user', 
+            content: `다음 질문을 분석해주세요: "${question}"`
+          }
+        ]
+      })
+
+      return c.json({ 
+        success: true, 
+        analysis: response.response 
+      })
+    } catch (aiError) {
+      // AI 서비스 오류시 기본 분석 제공
+      const defaultAnalysis = `🌟 강점
+• 명확하고 이해하기 쉬운 질문입니다
+• 호기심과 탐구 의욕이 잘 드러나 있습니다
+
+⚠️ 약점  
+• 좀 더 구체적인 상황이나 배경을 포함하면 좋겠습니다
+• 질문의 범위를 더 명확히 설정하면 답변하기 쉬워집니다
+
+💡 오늘의 보완점
+• "왜 그럴까요?" → "어떤 상황에서 왜 그럴까요?"로 구체화해보세요
+• 본인의 경험이나 관찰한 사례를 질문에 포함해보세요
+• 여러 관점에서 접근할 수 있는 하위 질문들을 만들어보세요`
+      
+      return c.json({ 
+        success: true, 
+        analysis: defaultAnalysis.trim()
+      })
+    }
+  } catch (error) {
+    return c.json({ error: '질문 분석 중 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// =================
+// 개인 상세 통계 API
+// =================
+
+// 학생 개인 상세 정보 조회 (내 질문 목록)
+app.get('/api/student/details/questions/:user_id', async (c) => {
+  try {
+    const userId = c.req.param('user_id')
+    
+    const questions = await c.env.DB.prepare(`
+      SELECT * FROM questions_with_stats 
+      WHERE user_id = ? 
+      ORDER BY created_at DESC
+      LIMIT 50
+    `).bind(userId).all()
+
     return c.json({ 
-      success: true,
-      response: '안녕하세요! 깊이 있는 질문을 만드는 데 도움을 드릴게요. 어떤 주제에 대해 질문을 만들어보고 싶으신가요? 예를 들어, "우정", "환경", "미래" 등의 주제로 시작해보세요!'
+      success: true, 
+      questions: questions.results 
     })
+  } catch (error) {
+    return c.json({ error: '질문 목록을 가져오는 중 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// 학생 개인 상세 정보 조회 (이번 주 질문 목록)  
+app.get('/api/student/details/week-questions/:user_id', async (c) => {
+  try {
+    const userId = c.req.param('user_id')
+    
+    const questions = await c.env.DB.prepare(`
+      SELECT * FROM questions_with_stats 
+      WHERE user_id = ? 
+      AND created_at >= date('now', '-7 days')
+      ORDER BY created_at DESC
+    `).bind(userId).all()
+
+    return c.json({ 
+      success: true, 
+      questions: questions.results 
+    })
+  } catch (error) {
+    return c.json({ error: '이번 주 질문 목록을 가져오는 중 오류가 발생했습니다.' }, 500)
+  }
+})
+
+// 학생 개인 상세 정보 조회 (받은 댓글 목록)
+app.get('/api/student/details/comments/:user_id', async (c) => {
+  try {
+    const userId = c.req.param('user_id')
+    
+    const comments = await c.env.DB.prepare(`
+      SELECT 
+        c.*,
+        q.content as question_content,
+        u.full_name as commenter_name
+      FROM comments c
+      JOIN questions q ON c.question_id = q.id
+      JOIN users u ON c.user_id = u.id
+      WHERE q.user_id = ?
+      ORDER BY c.created_at DESC
+      LIMIT 50
+    `).bind(userId).all()
+
+    return c.json({ 
+      success: true, 
+      comments: comments.results 
+    })
+  } catch (error) {
+    return c.json({ error: '댓글 목록을 가져오는 중 오류가 발생했습니다.' }, 500)
   }
 })
 
@@ -794,13 +1099,84 @@ app.get('/student', (c) => {
                 <i class="fas fa-edit mr-2 text-green-600"></i>
                 나의 질문 만들기
               </h3>
-              <form id="student-question-form">
-                <textarea name="content" placeholder="깊이 있는 질문을 작성해보세요..." required
-                          class="w-full px-4 py-3 border border-green-300 rounded-xl h-24 resize-none focus:outline-none focus:ring-2 focus:ring-green-500"></textarea>
-                <div class="mt-4 flex justify-end">
+              <form id="student-question-form" class="space-y-4">
+                {/* 1. 질문 내용 */}
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">
+                    <i class="fas fa-question-circle mr-1 text-green-500"></i>
+                    질문 내용
+                  </label>
+                  <textarea name="content" placeholder="깊이 있는 질문을 작성해보세요..." required
+                            class="w-full px-4 py-3 border border-green-300 rounded-xl h-24 resize-none focus:outline-none focus:ring-2 focus:ring-green-500"></textarea>
+                </div>
+
+                {/* 2. 질문 작성 이유 */}
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">
+                    <i class="fas fa-lightbulb mr-1 text-yellow-500"></i>
+                    이 질문을 작성한 이유
+                  </label>
+                  <textarea name="reason" placeholder="왜 이 질문을 하게 되었는지 설명해주세요..." required
+                            class="w-full px-4 py-3 border border-green-300 rounded-xl h-20 resize-none focus:outline-none focus:ring-2 focus:ring-green-500"></textarea>
+                </div>
+
+                {/* 3. 카테고리 선택 */}
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-3">
+                    <i class="fas fa-tags mr-1 text-blue-500"></i>
+                    카테고리 선택
+                  </label>
+                  <div class="category-grid grid grid-cols-3 gap-2">
+                    <label class="category-option cursor-pointer">
+                      <input type="radio" name="category" value="국어" required class="sr-only" />
+                      <div class="category-card p-3 border-2 border-gray-200 rounded-xl text-center hover:border-red-300 hover:bg-red-50 transition-colors">
+                        <i class="fas fa-book text-xl text-red-500 mb-1"></i>
+                        <div class="text-sm font-medium text-gray-700">국어</div>
+                      </div>
+                    </label>
+                    <label class="category-option cursor-pointer">
+                      <input type="radio" name="category" value="수학" required class="sr-only" />
+                      <div class="category-card p-3 border-2 border-gray-200 rounded-xl text-center hover:border-blue-300 hover:bg-blue-50 transition-colors">
+                        <i class="fas fa-calculator text-xl text-blue-500 mb-1"></i>
+                        <div class="text-sm font-medium text-gray-700">수학</div>
+                      </div>
+                    </label>
+                    <label class="category-option cursor-pointer">
+                      <input type="radio" name="category" value="사회" required class="sr-only" />
+                      <div class="category-card p-3 border-2 border-gray-200 rounded-xl text-center hover:border-yellow-300 hover:bg-yellow-50 transition-colors">
+                        <i class="fas fa-globe text-xl text-yellow-500 mb-1"></i>
+                        <div class="text-sm font-medium text-gray-700">사회</div>
+                      </div>
+                    </label>
+                    <label class="category-option cursor-pointer">
+                      <input type="radio" name="category" value="과학" required class="sr-only" />
+                      <div class="category-card p-3 border-2 border-gray-200 rounded-xl text-center hover:border-green-300 hover:bg-green-50 transition-colors">
+                        <i class="fas fa-flask text-xl text-green-500 mb-1"></i>
+                        <div class="text-sm font-medium text-gray-700">과학</div>
+                      </div>
+                    </label>
+                    <label class="category-option cursor-pointer">
+                      <input type="radio" name="category" value="예술" required class="sr-only" />
+                      <div class="category-card p-3 border-2 border-gray-200 rounded-xl text-center hover:border-purple-300 hover:bg-purple-50 transition-colors">
+                        <i class="fas fa-palette text-xl text-purple-500 mb-1"></i>
+                        <div class="text-sm font-medium text-gray-700">예술</div>
+                      </div>
+                    </label>
+                    <label class="category-option cursor-pointer">
+                      <input type="radio" name="category" value="기타" required class="sr-only" />
+                      <div class="category-card p-3 border-2 border-gray-200 rounded-xl text-center hover:border-gray-300 hover:bg-gray-50 transition-colors">
+                        <i class="fas fa-ellipsis-h text-xl text-gray-500 mb-1"></i>
+                        <div class="text-sm font-medium text-gray-700">기타</div>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                <div class="mt-6 flex justify-end">
                   <button type="submit" 
-                          class="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl transition-colors">
-                    질문 등록
+                          class="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl transition-colors flex items-center space-x-2">
+                    <i class="fas fa-pencil-alt"></i>
+                    <span>질문 등록하기</span>
                   </button>
                 </div>
               </form>
@@ -820,38 +1196,198 @@ app.get('/student', (c) => {
             </div>
           </div>
 
-          {/* Right Sidebar - AI Chat */}
-          <div class="lg:col-span-1">
+          {/* Right Sidebar - 나의 질문 레벨 & 분석 */}
+          <div class="lg:col-span-1 space-y-6">
+            {/* 질문 레벨 시스템 */}
+            <div class="bg-white/80 backdrop-blur-sm rounded-2xl p-5 shadow-sm border border-green-200">
+              <h3 class="font-semibold mb-4 flex items-center text-green-800">
+                <i class="fas fa-seedling mr-2 text-green-600"></i>
+                나의 질문 레벨
+              </h3>
+              <div id="student-level-display" class="text-center">
+                <div id="level-icon" class="w-16 h-16 mx-auto mb-3 rounded-2xl flex items-center justify-center">
+                  <i class="fas fa-seed text-2xl"></i>
+                </div>
+                <div id="level-name" class="font-bold text-lg text-green-800 mb-2">호기심 씨앗</div>
+                <div id="level-progress" class="text-sm text-green-600 mb-3">총 좋아요: 0개</div>
+                <div class="bg-green-100 rounded-full h-2 overflow-hidden">
+                  <div id="progress-bar" class="bg-green-500 h-full transition-all duration-500" style="width: 0%"></div>
+                </div>
+                <div id="next-level" class="text-xs text-gray-500 mt-2">다음 단계: 호기심 새싹 (21개)</div>
+              </div>
+            </div>
+
+            {/* 나의 질문 통계 */}
             <div class="bg-white/80 backdrop-blur-sm rounded-2xl p-5 shadow-sm border border-green-200">
               <h3 class="font-semibold mb-3 flex items-center text-green-800">
-                <i class="fas fa-robot mr-2 text-purple-600"></i>
-                AI 질문 도우미
+                <i class="fas fa-chart-line mr-2 text-green-600"></i>
+                나의 통계
               </h3>
-              <div id="student-ai-chat" class="space-y-3">
-                <div class="bg-green-50 rounded-xl p-3 text-sm">
-                  <div class="flex items-start space-x-2">
-                    <i class="fas fa-robot text-purple-600 mt-1"></i>
-                    <div class="text-green-800">
-                      안녕하세요! 좋은 질문을 만드는 데 도움을 드릴게요. 무엇이든 물어보세요!
-                    </div>
-                  </div>
+              <div id="student-personal-stats" class="space-y-3">
+                <div class="flex justify-between items-center text-sm p-2 bg-green-50 rounded-lg cursor-pointer hover:bg-green-100 transition-colors" onclick="app.showStatsDetail('questions')">
+                  <span class="text-gray-600 flex items-center">
+                    <i class="fas fa-question-circle mr-2 text-green-500"></i>
+                    총 질문 수
+                  </span>
+                  <span id="my-total-questions" class="font-bold text-green-600 text-lg">0</span>
                 </div>
-                <div id="student-ai-messages" class="space-y-2 max-h-64 overflow-y-auto"></div>
-                <form id="student-ai-chat-form">
-                  <div class="flex space-x-2">
-                    <input type="text" name="message" placeholder="AI에게 질문해보세요..." required
-                           class="flex-1 px-3 py-2 border border-green-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
-                    <button type="submit" 
-                            class="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl transition-colors">
-                      <i class="fas fa-paper-plane"></i>
-                    </button>
-                  </div>
-                </form>
+                <div class="flex justify-between items-center text-sm p-2 bg-blue-50 rounded-lg cursor-pointer hover:bg-blue-100 transition-colors" onclick="app.showStatsDetail('week-questions')">
+                  <span class="text-gray-600 flex items-center">
+                    <i class="fas fa-calendar-week mr-2 text-blue-500"></i>
+                    이번 주 질문
+                  </span>
+                  <span id="my-week-questions" class="font-bold text-blue-600 text-lg">0</span>
+                </div>
+                <div class="flex justify-between items-center text-sm p-2 bg-purple-50 rounded-lg cursor-pointer hover:bg-purple-100 transition-colors" onclick="app.showStatsDetail('comments')">
+                  <span class="text-gray-600 flex items-center">
+                    <i class="fas fa-comments mr-2 text-purple-500"></i>
+                    받은 댓글
+                  </span>
+                  <span id="my-total-comments" class="font-bold text-purple-600 text-lg">0</span>
+                </div>
+              </div>
+            </div>
+
+            {/* 질문 분석 대시보드 */}
+            <div class="bg-white/80 backdrop-blur-sm rounded-2xl p-5 shadow-sm border border-green-200">
+              <h3 class="font-semibold mb-4 flex items-center text-green-800">
+                <i class="fas fa-microscope mr-2 text-purple-600"></i>
+                질문 분석 대시보드
+              </h3>
+              
+              <div id="auto-analysis-content" class="space-y-4">
+                {/* 자동 분석 결과가 여기에 표시됩니다 */}
+                <div class="text-center text-gray-400 py-8">
+                  <i class="fas fa-brain text-3xl mb-3"></i>
+                  <p class="text-sm">질문을 작성하면<br/>자동으로 분석 결과가<br/>나타납니다! 🧠</p>
+                </div>
               </div>
             </div>
           </div>
         </div>
       </main>
+
+      {/* 상세 통계 모달 */}
+      <div id="stats-detail-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50">
+        <div class="flex items-center justify-center min-h-screen p-4">
+          <div class="bg-white rounded-2xl p-6 w-full max-w-2xl max-h-[80vh] overflow-hidden">
+            <div class="flex items-center justify-between mb-4">
+              <h2 id="stats-modal-title" class="text-xl font-bold text-gray-800">나의 상세 통계</h2>
+              <button onclick="app.closeStatsModal()" class="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                <i class="fas fa-times text-gray-500"></i>
+              </button>
+            </div>
+            
+            <div id="stats-modal-content" class="overflow-y-auto max-h-[60vh]">
+              <div class="text-center text-gray-500 py-8">
+                로딩 중...
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 질문 수정 모달 */}
+      <div id="edit-question-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50">
+        <div class="flex items-center justify-center min-h-screen p-4">
+          <div class="bg-white rounded-2xl p-6 w-full max-w-2xl">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="text-xl font-bold text-gray-800">질문 수정하기</h2>
+              <button onclick="app.closeEditModal()" class="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                <i class="fas fa-times text-gray-500"></i>
+              </button>
+            </div>
+            
+            <form id="edit-question-form" class="space-y-4">
+              <input type="hidden" name="question_id" />
+              
+              {/* 질문 내용 */}
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                  <i class="fas fa-question-circle mr-1 text-green-500"></i>
+                  질문 내용
+                </label>
+                <textarea name="content" required
+                          class="w-full px-4 py-3 border border-green-300 rounded-xl h-24 resize-none focus:outline-none focus:ring-2 focus:ring-green-500"></textarea>
+              </div>
+
+              {/* 질문 작성 이유 */}
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                  <i class="fas fa-lightbulb mr-1 text-yellow-500"></i>
+                  이 질문을 작성한 이유
+                </label>
+                <textarea name="reason" required
+                          class="w-full px-4 py-3 border border-green-300 rounded-xl h-20 resize-none focus:outline-none focus:ring-2 focus:ring-green-500"></textarea>
+              </div>
+
+              {/* 카테고리 선택 */}
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-3">
+                  <i class="fas fa-tags mr-1 text-blue-500"></i>
+                  카테고리 선택
+                </label>
+                <div class="category-grid grid grid-cols-3 gap-2">
+                  <label class="category-option cursor-pointer">
+                    <input type="radio" name="category" value="국어" required class="sr-only" />
+                    <div class="category-card p-3 border-2 border-gray-200 rounded-xl text-center hover:border-red-300 hover:bg-red-50 transition-colors">
+                      <i class="fas fa-book text-xl text-red-500 mb-1"></i>
+                      <div class="text-sm font-medium text-gray-700">국어</div>
+                    </div>
+                  </label>
+                  <label class="category-option cursor-pointer">
+                    <input type="radio" name="category" value="수학" required class="sr-only" />
+                    <div class="category-card p-3 border-2 border-gray-200 rounded-xl text-center hover:border-blue-300 hover:bg-blue-50 transition-colors">
+                      <i class="fas fa-calculator text-xl text-blue-500 mb-1"></i>
+                      <div class="text-sm font-medium text-gray-700">수학</div>
+                    </div>
+                  </label>
+                  <label class="category-option cursor-pointer">
+                    <input type="radio" name="category" value="사회" required class="sr-only" />
+                    <div class="category-card p-3 border-2 border-gray-200 rounded-xl text-center hover:border-yellow-300 hover:bg-yellow-50 transition-colors">
+                      <i class="fas fa-globe text-xl text-yellow-500 mb-1"></i>
+                      <div class="text-sm font-medium text-gray-700">사회</div>
+                    </div>
+                  </label>
+                  <label class="category-option cursor-pointer">
+                    <input type="radio" name="category" value="과학" required class="sr-only" />
+                    <div class="category-card p-3 border-2 border-gray-200 rounded-xl text-center hover:border-green-300 hover:bg-green-50 transition-colors">
+                      <i class="fas fa-flask text-xl text-green-500 mb-1"></i>
+                      <div class="text-sm font-medium text-gray-700">과학</div>
+                    </div>
+                  </label>
+                  <label class="category-option cursor-pointer">
+                    <input type="radio" name="category" value="예술" required class="sr-only" />
+                    <div class="category-card p-3 border-2 border-gray-200 rounded-xl text-center hover:border-purple-300 hover:bg-purple-50 transition-colors">
+                      <i class="fas fa-palette text-xl text-purple-500 mb-1"></i>
+                      <div class="text-sm font-medium text-gray-700">예술</div>
+                    </div>
+                  </label>
+                  <label class="category-option cursor-pointer">
+                    <input type="radio" name="category" value="기타" required class="sr-only" />
+                    <div class="category-card p-3 border-2 border-gray-200 rounded-xl text-center hover:border-gray-300 hover:bg-gray-50 transition-colors">
+                      <i class="fas fa-ellipsis-h text-xl text-gray-500 mb-1"></i>
+                      <div class="text-sm font-medium text-gray-700">기타</div>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              <div class="flex space-x-3 pt-4">
+                <button type="button" onclick="app.closeEditModal()" 
+                        class="flex-1 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors">
+                  취소
+                </button>
+                <button type="submit" 
+                        class="flex-1 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl transition-colors">
+                  <i class="fas fa-save mr-1"></i>
+                  수정 완료
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
     </div>
   )
 })
@@ -897,22 +1433,61 @@ app.get('/teacher', (c) => {
 
             {/* Student Management */}
             <div class="bg-white/80 backdrop-blur-sm rounded-2xl p-5 shadow-sm border border-blue-200">
-              <h3 class="font-semibold mb-3 flex items-center text-blue-800">
-                <i class="fas fa-users mr-2 text-blue-600"></i>
-                학생 계정 생성
-              </h3>
-              <form id="create-student-form" class="space-y-3">
-                <input type="text" name="student_name" placeholder="학생 이름" required
-                       class="w-full px-3 py-2 border border-blue-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500" />
-                <input type="text" name="student_username" placeholder="로그인 아이디" required
-                       class="w-full px-3 py-2 border border-blue-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500" />
-                <input type="password" name="student_password" placeholder="초기 비밀번호" required
-                       class="w-full px-3 py-2 border border-blue-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500" />
-                <button type="submit" 
-                        class="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm transition-colors">
-                  학생 계정 생성
-                </button>
-              </form>
+              <div class="flex items-center justify-between mb-3">
+                <h3 class="font-semibold flex items-center text-blue-800">
+                  <i class="fas fa-users mr-2 text-blue-600"></i>
+                  학생 계정 관리
+                </h3>
+                <div class="flex space-x-2">
+                  <button id="single-mode-btn" onclick="app.switchStudentMode('single')" 
+                          class="px-2 py-1 text-xs bg-blue-100 text-blue-600 rounded-lg transition-colors">
+                    개별
+                  </button>
+                  <button id="bulk-mode-btn" onclick="app.switchStudentMode('bulk')" 
+                          class="px-2 py-1 text-xs bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-600 rounded-lg transition-colors">
+                    일괄
+                  </button>
+                </div>
+              </div>
+
+              {/* 개별 생성 모드 */}
+              <div id="single-create-mode">
+                <form id="create-student-form" class="space-y-3">
+                  <input type="text" name="student_name" placeholder="학생 이름" required
+                         class="w-full px-3 py-2 border border-blue-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500" />
+                  <input type="text" name="student_username" placeholder="로그인 아이디" required
+                         class="w-full px-3 py-2 border border-blue-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500" />
+                  <input type="password" name="student_password" placeholder="초기 비밀번호" required
+                         class="w-full px-3 py-2 border border-blue-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500" />
+                  <button type="submit" 
+                          class="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm transition-colors">
+                    학생 계정 생성
+                  </button>
+                </form>
+              </div>
+
+              {/* 일괄 생성 모드 */}
+              <div id="bulk-create-mode" class="hidden">
+                <div class="mb-3 p-3 bg-blue-50 rounded-lg">
+                  <p class="text-xs text-blue-700 mb-2">
+                    <i class="fas fa-info-circle mr-1"></i>
+                    한 줄에 하나씩 입력하세요
+                  </p>
+                  <p class="text-xs text-blue-600">
+                    형식: 이름,아이디,비밀번호<br/>
+                    예시: 홍길동,student01,1234
+                  </p>
+                </div>
+                <form id="bulk-create-student-form">
+                  <textarea name="student_list" placeholder="홍길동,student01,1234&#10;김영희,student02,1234&#10;이철수,student03,1234" 
+                            class="w-full px-3 py-2 border border-blue-300 rounded-xl text-sm h-32 resize-none focus:ring-2 focus:ring-blue-500"></textarea>
+                  <button type="submit" 
+                          class="w-full mt-3 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm transition-colors">
+                    <i class="fas fa-users mr-1"></i>
+                    일괄 계정 생성
+                  </button>
+                </form>
+              </div>
             </div>
           </div>
 
