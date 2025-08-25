@@ -622,8 +622,8 @@ class QuestionClassroomApp {
       const response = await axios.get(`/api/student/stats/${this.currentUser.id}`);
       if (response.data.success) {
         this.updateStudentStats(response.data.stats);
-        // 질문 수 기반으로 레벨 계산 (누적형)
-        this.updateStudentLevel(response.data.stats.total_questions);
+        // 하트(좋아요) 수 기반으로 레벨 계산 (누적형)
+        this.updateStudentLevel(response.data.stats.total_likes);
       }
     } catch (error) {
       console.error('개인 통계 로드 오류:', error);
@@ -644,92 +644,92 @@ class QuestionClassroomApp {
     });
   }
 
-  // 레벨 시스템 업데이트 (질문 수 기반 - 누적형)
-  updateStudentLevel(totalQuestions) {
+  // 레벨 시스템 업데이트 (하트/좋아요 수 기반 - 누적형)
+  updateStudentLevel(totalLikes) {
     const levels = [
       { 
         name: '호기심 씨앗', 
         min: 0, 
-        max: 4, 
-        emoji: '🌱',
+        max: 20, 
+        image: 'https://page.gensparksite.com/v1/base64_upload/91beec7bb9902dac001b3c9a5526b529',
         color: 'from-green-400 to-green-500',
         bgColor: 'bg-green-100',
-        description: '첫 질문을 시작하는 단계'
+        description: '질문을 시작하는 단계'
       },
       { 
         name: '호기심 새싹', 
-        min: 5, 
-        max: 14, 
-        emoji: '🌿',
+        min: 21, 
+        max: 50, 
+        image: 'https://page.gensparksite.com/v1/base64_upload/a629b175d0247b9f540865bcb35d83df',
         color: 'from-green-500 to-green-600',
         bgColor: 'bg-green-200',
-        description: '질문하는 습관이 생기는 단계'
+        description: '질문 습관이 자라는 단계'
       },
       { 
-        name: '호기심 잎새', 
-        min: 15, 
-        max: 29, 
-        emoji: '🍀',
-        color: 'from-green-600 to-green-700',
-        bgColor: 'bg-green-300',
-        description: '깊이있는 질문을 만드는 단계'
+        name: '호기심 꽃', 
+        min: 51, 
+        max: 100, 
+        image: 'https://page.gensparksite.com/v1/base64_upload/4695dece394aa487b0b2bb723fcbef3d',
+        color: 'from-pink-500 to-pink-600',
+        bgColor: 'bg-pink-200',
+        description: '아름다운 질문을 피우는 단계'
       },
       { 
         name: '호기심 나무', 
-        min: 30, 
-        max: 49, 
-        emoji: '🌳',
+        min: 101, 
+        max: 200, 
+        image: 'https://page.gensparksite.com/v1/base64_upload/06831e87699528949d2c262e8ff5223c',
         color: 'from-green-700 to-green-800',
         bgColor: 'bg-green-400',
-        description: '창의적 질문을 만드는 단계'
+        description: '깊이있는 지혜를 키우는 단계'
       },
       { 
-        name: '호기심 정령왕', 
-        min: 50, 
+        name: '호기심 숲', 
+        min: 201, 
         max: Infinity, 
-        emoji: '👑',
-        color: 'from-yellow-500 to-orange-500',
-        bgColor: 'bg-yellow-200',
-        description: '질문의 마스터 단계'
+        image: 'https://page.gensparksite.com/v1/base64_upload/b1f3dc14d6e9273914102f2fd64b40bc',
+        color: 'from-emerald-600 to-emerald-800',
+        bgColor: 'bg-emerald-200',
+        description: '질문의 마스터가 된 단계'
       }
     ];
 
-    const currentLevel = levels.find(level => totalQuestions >= level.min && totalQuestions <= level.max);
-    const nextLevel = levels.find(level => level.min > totalQuestions);
+    const currentLevel = levels.find(level => totalLikes >= level.min && totalLikes <= level.max);
+    const nextLevel = levels.find(level => level.min > totalLikes);
 
     if (currentLevel) {
-      // 레벨 아이콘 업데이트 - 귀여운 픽셀 스타일 이모지
+      // 레벨 아이콘 업데이트 - 픽셀 아트 이미지 사용
       const levelIcon = document.getElementById('level-icon');
       if (levelIcon) {
-        levelIcon.className = `w-20 h-20 mx-auto mb-3 rounded-2xl flex items-center justify-center ${currentLevel.bgColor} border-4 border-white shadow-lg transform hover:scale-105 transition-transform`;
-        levelIcon.innerHTML = `<span class="text-4xl animate-bounce">${currentLevel.emoji}</span>`;
+        levelIcon.className = `w-20 h-20 mx-auto mb-3 rounded-2xl flex items-center justify-center ${currentLevel.bgColor} border-4 border-white shadow-lg transform hover:scale-105 transition-transform overflow-hidden`;
+        levelIcon.innerHTML = `<img src="${currentLevel.image}" alt="${currentLevel.name}" class="w-16 h-16 object-contain pixel-art" style="image-rendering: pixelated;">`;
       }
 
       // 레벨 이름 업데이트
       const levelName = document.getElementById('level-name');
       if (levelName) levelName.textContent = currentLevel.name;
 
-      // 진행도 업데이트 (질문 수 기반)
+      // 진행도 업데이트 (하트/좋아요 수 기반)
       const levelProgress = document.getElementById('level-progress');
-      if (levelProgress) levelProgress.textContent = `총 질문 수: ${totalQuestions}개 (누적)`;
+      if (levelProgress) levelProgress.textContent = `총 하트: ${totalLikes}개 (누적)`;
 
       // 다음 레벨 정보
       const nextLevelElement = document.getElementById('next-level');
       if (nextLevelElement) {
         if (nextLevel) {
-          const remainingQuestions = nextLevel.min - totalQuestions;
-          nextLevelElement.textContent = `다음 단계: ${nextLevel.name} (${remainingQuestions}개 더 필요)`;
+          const remainingLikes = nextLevel.min - totalLikes;
+          nextLevelElement.textContent = `다음 단계: ${nextLevel.name} (하트 ${remainingLikes}개 더 필요)`;
           
           // 프로그레스 바
           const progressBar = document.getElementById('progress-bar');
           if (progressBar) {
             const currentLevelRange = currentLevel.max - currentLevel.min + 1;
-            const currentLevelProgress = totalQuestions - currentLevel.min;
+            const currentLevelProgress = totalLikes - currentLevel.min;
             const progress = Math.min(100, (currentLevelProgress / currentLevelRange) * 100);
             progressBar.style.width = `${progress}%`;
           }
         } else {
-          nextLevelElement.textContent = '최고 레벨 달성! 질문의 마스터입니다! 🎉';
+          nextLevelElement.textContent = '최고 레벨 달성! 호기심 숲의 주인이 되셨습니다! 🎉';
           const progressBar = document.getElementById('progress-bar');
           if (progressBar) progressBar.style.width = '100%';
         }

@@ -129,6 +129,24 @@
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
 }
 
+/* 픽셀 아트 스타일 */
+.pixel-art {
+  image-rendering: -moz-crisp-edges;
+  image-rendering: -webkit-crisp-edges;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* 레벨 아이콘 애니메이션 */
+.level-icon-bounce {
+  animation: levelBounce 2s ease-in-out infinite;
+}
+
+@keyframes levelBounce {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-5px); }
+}
+
 /* 반응형 최적화 */
 @media (max-width: 768px) {
   .question-card {
