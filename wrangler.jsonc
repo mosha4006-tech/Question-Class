@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "webapp",
+  "name": "deep-question-classroom",
   "compatibility_date": "2025-08-24",
   "pages_build_output_dir": "./dist",
   "compatibility_flags": [
@@ -9,8 +9,8 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "webapp-production",
-      "database_id": "placeholder-will-be-replaced-after-creation"
+      "database_name": "deep-question-classroom-production",
+      "database_id": "860d0a66-7ac8-4ba4-904b-b9f290868a1b"
     }
   ],
   "ai": {
