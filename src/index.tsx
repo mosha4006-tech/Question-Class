@@ -1253,6 +1253,15 @@ app.get('/', (c) => {
 
       {/* Toast Notifications */}
       <div id="toast-container" class="fixed top-4 right-4 z-50 space-y-2"></div>
+      
+      {/* Footer */}
+      <footer class="mt-auto py-6 border-t border-green-200 bg-white/50">
+        <div class="max-w-4xl mx-auto px-6 text-center">
+          <p class="text-sm text-gray-500">
+            © Copyright 2025. 편식왕냐옹이 All rights reserved.
+          </p>
+        </div>
+      </footer>
     </div>
   )
 })
@@ -1509,6 +1518,15 @@ app.get('/student', (c) => {
           </div>
         </div>
       </div>
+
+      {/* Footer */}
+      <footer class="mt-8 py-6 border-t border-green-200 bg-white/50">
+        <div class="max-w-6xl mx-auto px-4 text-center">
+          <p class="text-sm text-gray-500">
+            © Copyright 2025. 편식왕냐옹이 All rights reserved.
+          </p>
+        </div>
+      </footer>
 
       {/* 질문 수정 모달 */}
       <div id="edit-question-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50">
@@ -1769,6 +1787,15 @@ app.get('/teacher', (c) => {
           </div>
         </div>
       </main>
+      
+      {/* Footer */}
+      <footer class="mt-8 py-6 border-t border-blue-200 bg-white/50">
+        <div class="max-w-7xl mx-auto px-4 text-center">
+          <p class="text-sm text-gray-500">
+            © Copyright 2025. 편식왕냐옹이 All rights reserved.
+          </p>
+        </div>
+      </footer>
       
       {/* 개인정보 수정 Modal */}
       <div id="update-profile-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50">
