@@ -1661,11 +1661,11 @@ app.get('/teacher', (c) => {
       </header>
 
       {/* Main Content */}
-      <main class="max-w-6xl mx-auto px-4 py-6">
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <main class="max-w-7xl mx-auto px-4 py-6">
+        <div class="grid grid-cols-1 xl:grid-cols-4 gap-6">
           
-          {/* Left Column - Calendar */}
-          <div class="space-y-6">
+          {/* Left Column - Calendar & Student Management */}
+          <div class="xl:col-span-1 space-y-6">
             <div class="bg-white/80 backdrop-blur-sm rounded-2xl p-5 shadow-sm border border-blue-200">
               <h3 class="font-semibold mb-3 flex items-center text-blue-800">
                 <i class="fas fa-calendar-alt mr-2 text-blue-600"></i>
@@ -1733,24 +1733,8 @@ app.get('/teacher', (c) => {
                 </form>
               </div>
             </div>
-          </div>
 
-          {/* Middle Column - Today's Questions */}
-          <div class="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-sm border border-blue-200">
-            <h3 class="font-semibold mb-4 flex items-center text-blue-800">
-              <i class="fas fa-comments mr-2 text-blue-600"></i>
-              우리반의 오늘 만든 질문
-            </h3>
-            <div id="teacher-questions-feed" class="space-y-4 max-h-96 overflow-y-auto">
-              <div class="text-center text-gray-500 py-8">
-                로딩 중...
-              </div>
-            </div>
-          </div>
-
-          {/* Right Column - Analytics */}
-          <div class="space-y-6">
-            {/* Question Statistics */}
+            {/* Question Statistics - 이동된 위치 */}
             <div class="bg-white/80 backdrop-blur-sm rounded-2xl p-5 shadow-sm border border-blue-200">
               <h3 class="font-semibold mb-3 flex items-center text-blue-800">
                 <i class="fas fa-chart-bar mr-2 text-blue-600"></i>
@@ -1772,7 +1756,7 @@ app.get('/teacher', (c) => {
               </div>
             </div>
 
-            {/* Student List */}
+            {/* Student List - 이동된 위치 */}
             <div class="bg-white/80 backdrop-blur-sm rounded-2xl p-5 shadow-sm border border-blue-200">
               <h3 class="font-semibold mb-3 flex items-center text-blue-800">
                 <i class="fas fa-list mr-2 text-blue-600"></i>
@@ -1781,6 +1765,22 @@ app.get('/teacher', (c) => {
               <div id="students-list" class="space-y-2 max-h-48 overflow-y-auto">
                 <div class="text-center text-gray-500 text-sm py-4">
                   로딩 중...
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Main Questions Area - 훨씬 더 넓어진 영역 */}
+          <div class="xl:col-span-3">
+            <div class="bg-white/80 backdrop-blur-sm rounded-2xl p-8 shadow-sm border border-blue-200 h-full">
+              <h3 class="font-semibold mb-6 flex items-center text-blue-800 text-xl">
+                <i class="fas fa-comments mr-3 text-blue-600"></i>
+                우리반의 오늘 만든 질문
+              </h3>
+              <div id="teacher-questions-feed" class="space-y-6 min-h-[70vh] max-h-[80vh] overflow-y-auto pr-4">
+                <div class="text-center text-gray-500 py-16">
+                  <i class="fas fa-comments text-4xl mb-4 text-gray-400"></i>
+                  <p class="text-lg">로딩 중...</p>
                 </div>
               </div>
             </div>

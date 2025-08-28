@@ -1070,47 +1070,74 @@ class QuestionClassroomApp {
     const categoryStyle = this.getCategoryStyle(question.category || '기타');
     
     return `
-      <div class="bg-white/60 backdrop-blur-sm rounded-xl p-4 border border-blue-200 question-card" data-question-id="${question.id}">
-        <div class="flex items-start justify-between mb-3">
-          <div class="flex items-center space-x-3">
-            <div class="w-8 h-8 bg-gradient-to-r from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white font-semibold text-sm">
+      <div class="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-blue-200 shadow-lg question-card hover:shadow-xl transition-all duration-300" data-question-id="${question.id}">
+        <div class="flex items-start justify-between mb-5">
+          <div class="flex items-center space-x-4">
+            <div class="w-12 h-12 bg-gradient-to-r from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-md">
               ${question.author_name.charAt(0)}
             </div>
             <div class="flex-1">
-              <div class="font-semibold text-blue-800 text-sm">${question.author_name}</div>
-              <div class="text-xs text-blue-600">${timeAgo}</div>
+              <div class="font-bold text-blue-800 text-base">${question.author_name}</div>
+              <div class="text-sm text-blue-600 mt-1">
+                <i class="fas fa-clock mr-1"></i>
+                ${timeAgo}
+              </div>
             </div>
           </div>
           ${question.category ? `
-            <div class="px-2 py-1 bg-${categoryStyle.color}-100 text-${categoryStyle.color}-600 rounded-full text-xs flex items-center space-x-1">
+            <div class="px-3 py-2 bg-${categoryStyle.color}-100 text-${categoryStyle.color}-600 rounded-full text-sm flex items-center space-x-2 font-medium">
               <i class="${categoryStyle.icon}"></i>
               <span>${question.category}</span>
             </div>
           ` : ''}
         </div>
         
-        <div class="mb-3">
-          <p class="text-gray-800 text-sm leading-relaxed">${question.content}</p>
+        <div class="mb-6 space-y-4">
+          <div class="bg-blue-50/50 rounded-xl p-4 border-l-4 border-blue-400">
+            <h4 class="font-semibold text-gray-800 mb-2 flex items-center">
+              <i class="fas fa-question-circle mr-2 text-blue-500"></i>
+              질문 내용
+            </h4>
+            <p class="text-gray-800 leading-relaxed text-base whitespace-pre-wrap">${question.content}</p>
+          </div>
+          
           ${question.reason ? `
-            <div class="mt-2 p-2 bg-yellow-50 border-l-4 border-yellow-300 rounded-r">
-              <p class="text-xs text-yellow-700">
-                <i class="fas fa-lightbulb mr-1"></i>
-                <strong>작성 이유:</strong> ${question.reason}
-              </p>
+            <div class="bg-yellow-50/70 rounded-xl p-4 border-l-4 border-yellow-400">
+              <h4 class="font-semibold text-gray-800 mb-2 flex items-center">
+                <i class="fas fa-lightbulb mr-2 text-yellow-500"></i>
+                작성 이유
+              </h4>
+              <p class="text-yellow-800 leading-relaxed text-base whitespace-pre-wrap">${question.reason}</p>
             </div>
           ` : ''}
         </div>
         
-        <div class="flex items-center justify-between">
+        <div class="flex items-center justify-between pt-4 border-t border-gray-200">
+          <div class="flex items-center space-x-6">
+            <div class="flex items-center space-x-2 text-red-500 font-medium">
+              <i class="fas fa-heart text-lg"></i>
+              <span class="text-base">${question.like_count || 0}</span>
+            </div>
+            <button onclick="app.showQuestionComments(${question.id})" class="flex items-center space-x-2 text-blue-500 font-medium hover:text-blue-700 transition-colors cursor-pointer">
+              <i class="fas fa-comment text-lg"></i>
+              <span class="text-base">${question.comment_count || 0}</span>
+            </button>
+          </div>
+          
           <div class="flex items-center space-x-3">
-            <div class="flex items-center space-x-1 text-red-500 text-sm">
+            <button onclick="app.toggleLike(${question.id})" 
+                    class="px-4 py-2 bg-red-100 hover:bg-red-200 text-red-600 rounded-lg transition-colors flex items-center space-x-2">
               <i class="fas fa-heart"></i>
-              <span>${question.like_count || 0}</span>
-            </div>
-            <div class="flex items-center space-x-1 text-blue-500 text-sm">
-              <i class="fas fa-comment"></i>
-              <span>${question.comment_count || 0}</span>
-            </div>
+              <span>좋아요</span>
+            </button>
+            
+            ${this.currentUser?.user_type === 'teacher' ? `
+              <button onclick="app.deleteStudentQuestion(${question.id})" 
+                      class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg transition-colors flex items-center space-x-2">
+                <i class="fas fa-trash"></i>
+                <span>삭제</span>
+              </button>
+            ` : ''}
           </div>
         </div>
       </div>
@@ -1950,6 +1977,138 @@ class QuestionClassroomApp {
         }
       }, 300);
     }, duration);
+  }
+
+  // 질문 댓글 보기 모달
+  async showQuestionComments(questionId) {
+    try {
+      // 댓글 목록 가져오기
+      const response = await axios.get(`/api/questions/${questionId}/comments`);
+      
+      if (response.data.success) {
+        // 모달 생성
+        const modalHtml = `
+          <div id="question-comments-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden">
+              <div class="flex items-center justify-between p-6 border-b">
+                <h2 class="text-xl font-bold text-gray-800 flex items-center">
+                  <i class="fas fa-comments mr-2 text-blue-500"></i>
+                  질문 댓글 (${response.data.comments.length}개)
+                </h2>
+                <button onclick="app.closeCommentsModal()" class="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                  <i class="fas fa-times text-gray-500"></i>
+                </button>
+              </div>
+              
+              <div class="p-6 overflow-y-auto max-h-96">
+                <div id="comments-display" class="space-y-4">
+                  ${this.renderCommentsForModal(response.data.comments)}
+                </div>
+              </div>
+              
+              ${this.currentUser ? `
+                <div class="border-t p-4">
+                  <form onsubmit="app.submitCommentInModal(event, ${questionId})" class="flex space-x-3">
+                    <input type="text" name="comment" placeholder="댓글을 입력하세요..." required
+                           class="flex-1 px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <button type="submit" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors">
+                      <i class="fas fa-paper-plane"></i>
+                    </button>
+                  </form>
+                </div>
+              ` : ''}
+            </div>
+          </div>
+        `;
+        
+        // 기존 모달 제거
+        const existingModal = document.getElementById('question-comments-modal');
+        if (existingModal) {
+          existingModal.remove();
+        }
+        
+        // 새 모달 추가
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        
+      } else {
+        throw new Error('댓글을 불러오지 못했습니다.');
+      }
+      
+    } catch (error) {
+      this.showToast(error.response?.data?.error || '댓글을 불러오는 중 오류가 발생했습니다.', 'error');
+    }
+  }
+
+  // 댓글 모달용 렌더링
+  renderCommentsForModal(comments) {
+    if (comments.length === 0) {
+      return `
+        <div class="text-center text-gray-500 py-8">
+          <i class="fas fa-comment-slash text-3xl mb-3"></i>
+          <p>아직 댓글이 없습니다.</p>
+        </div>
+      `;
+    }
+
+    return comments.map(comment => `
+      <div class="flex items-start space-x-3 p-4 bg-gray-50 rounded-xl">
+        <div class="w-10 h-10 bg-gradient-to-r from-purple-500 to-pink-600 rounded-full flex items-center justify-center text-white font-bold">
+          ${comment.author_name.charAt(0)}
+        </div>
+        <div class="flex-1">
+          <div class="flex items-center space-x-2 mb-2">
+            <span class="font-semibold text-gray-800">${comment.author_name}</span>
+            <span class="text-sm text-gray-500">${dayjs(comment.created_at).fromNow()}</span>
+          </div>
+          <p class="text-gray-700 leading-relaxed">${comment.content}</p>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  // 댓글 모달에서 댓글 작성
+  async submitCommentInModal(e, questionId) {
+    e.preventDefault();
+    
+    if (!this.currentUser) {
+      this.showToast('로그인이 필요합니다.', 'error');
+      return;
+    }
+
+    const formData = new FormData(e.target);
+    const content = formData.get('comment').trim();
+    
+    if (!content) return;
+
+    try {
+      const response = await axios.post(`/api/questions/${questionId}/comments`, {
+        content: content
+      });
+
+      if (response.data.success) {
+        // 댓글 목록 새로고침
+        this.showQuestionComments(questionId);
+        
+        // 질문 목록도 새로고침 (댓글 수 업데이트)
+        if (this.currentPage === 'student') {
+          this.loadStudentQuestions();
+        } else if (this.currentPage === 'teacher') {
+          this.loadTeacherQuestions();
+        }
+        
+        this.showToast('댓글이 등록되었습니다! 💬', 'success');
+      }
+    } catch (error) {
+      this.showToast(error.response?.data?.error || '댓글 작성에 실패했습니다.', 'error');
+    }
+  }
+
+  // 댓글 모달 닫기
+  closeCommentsModal() {
+    const modal = document.getElementById('question-comments-modal');
+    if (modal) {
+      modal.remove();
+    }
   }
 }
 
