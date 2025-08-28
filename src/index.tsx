@@ -1079,12 +1079,7 @@ app.get('/', (c) => {
             </button>
           </div>
 
-          {/* Forgot Password Link */}
-          <div class="text-center mt-6">
-            <button id="forgot-password-btn" class="text-sm text-gray-500 hover:text-gray-700 transition-colors">
-              비밀번호를 잊으셨나요?
-            </button>
-          </div>
+
         </div>
       </main>
 
@@ -1190,6 +1185,46 @@ app.get('/', (c) => {
                 <span class="text-gray-300">|</span>
                 <button type="button" id="reset-password-btn" class="text-sm text-blue-600 hover:text-blue-800 transition-colors">
                   비밀번호 재설정
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      {/* 아이디 찾기 Modal */}
+      <div id="find-username-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50">
+        <div class="flex items-center justify-center min-h-screen p-4">
+          <div class="bg-white rounded-2xl p-8 w-full max-w-md">
+            <div class="text-center mb-6">
+              <div class="w-16 h-16 bg-blue-100 rounded-2xl mx-auto mb-4 flex items-center justify-center">
+                <i class="fas fa-user-search text-2xl text-blue-600"></i>
+              </div>
+              <h2 class="text-2xl font-bold text-gray-800">아이디 찾기</h2>
+              <p class="text-gray-600 mt-2">등록하신 이름과 이메일로 아이디를 찾아드립니다</p>
+            </div>
+            
+            <form id="find-username-form" class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">이름</label>
+                <input type="text" name="full_name" required 
+                       class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                       placeholder="등록하신 실명을 입력하세요" />
+              </div>
+              
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">이메일</label>
+                <input type="email" name="email" required 
+                       class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                       placeholder="등록하신 이메일을 입력하세요" />
+              </div>
+              
+              <div class="flex space-x-3 pt-4">
+                <button type="button" class="flex-1 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors modal-close">
+                  취소
+                </button>
+                <button type="submit" class="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors">
+                  아이디 찾기
                 </button>
               </div>
             </form>
